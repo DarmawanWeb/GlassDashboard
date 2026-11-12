@@ -8,12 +8,14 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 import glass
 
+from .routers import drone as drone_router
 from .routers import glass as glass_router
 
 app = FastAPI(
     title="GLASS API",
     version=glass.__version__,
-    description="Mesin prototipe GLASS: SDSI, cadangan klaim, IBNR, PML, pembayaran hibrida, sertifikat digital.",
+    description=("Mesin prototipe GLASS: satelit + drone simulasi (RGB, LiDAR, termal), analisis AI kerusakan, SDSI, "
+                 "cadangan klaim, IBNR, PML, pembayaran hibrida, sertifikat digital."),
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
 )
@@ -30,3 +32,4 @@ def health() -> dict:
 
 
 app.include_router(glass_router.router)
+app.include_router(drone_router.router)

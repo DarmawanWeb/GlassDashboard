@@ -15,7 +15,11 @@ FIELDS = ("certificate_id", "asset_id", "asset_type", "location", "event", "sdsi
           "sum_insured_idr", "estimated_claim_idr", "advance_idr", "topup_idr", "data_sources",
           "model_version", "issued_utc")
 
-DATA_SOURCES = ["Foto satelit (Maxar / xBD)", "Radar Sentinel-1", "Peta banjir Sentinel-1 (GFM)", "USGS ShakeMap"]
+DATA_SOURCES = {
+    "satelit": ["Foto satelit (Maxar / xBD)", "Radar Sentinel-1", "Peta banjir Sentinel-1 (GFM)", "USGS ShakeMap"],
+    "drone": ["Drone: kamera RGB", "Drone: LiDAR", "Drone: kamera termal LWIR", "USGS ShakeMap"],
+    "video": ["Video drone (unggahan)", "Radar Sentinel-1", "Peta banjir Sentinel-1 (GFM)", "USGS ShakeMap"],
+}
 
 
 def canonical(payload: dict) -> str:
@@ -42,7 +46,7 @@ def issue(asset: dict) -> dict:
         "estimated_claim_idr": int(round(asset["claim"])),
         "advance_idr": int(round(asset["advance"])),
         "topup_idr": int(round(asset["topup"])),
-        "data_sources": DATA_SOURCES,
+        "data_sources": DATA_SOURCES.get(asset.get("source", "satelit"), DATA_SOURCES["satelit"]),
         "model_version": MODEL_VERSION,
         "issued_utc": now.isoformat().replace("+00:00", "Z"),
     }

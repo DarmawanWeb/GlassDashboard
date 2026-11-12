@@ -4,11 +4,19 @@ name: glass
 services:
   api:
     build: ./api
-    image: glass-api:0.1.0
+    image: glass-api:0.2.0
     restart: unless-stopped
     environment:
       # Kosong = skenario contoh. Isi /data/<file>.geojson untuk memakai data aset asli.
       GLASS_ASSETS_FILE: ${GLASS_ASSETS_FILE:-}
+      # VLM opsional untuk "membaca" foto/video drone (lihat .env.example)
+      GLASS_VLM_PROVIDER: ${GLASS_VLM_PROVIDER:-}
+      GLASS_VLM_URL: ${GLASS_VLM_URL:-}
+      GLASS_VLM_MODEL: ${GLASS_VLM_MODEL:-}
+      GLASS_VLM_API_KEY: ${GLASS_VLM_API_KEY:-}
+      GLASS_MAX_UPLOAD_MB: ${GLASS_MAX_UPLOAD_MB:-300}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # supaya container bisa memanggil Ollama di host
     volumes:
       - ./data:/data:ro
     expose:

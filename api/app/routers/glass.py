@@ -22,9 +22,10 @@ def meta() -> dict:
 
 @router.post("/scenario")
 def scenario(req: ScenarioRequest) -> dict:
-    """Jalankan alur lengkap: Lihat -> Nilai -> Hitung -> Bayar untuk satu skenario."""
+    """Jalankan alur lengkap: Lihat -> Pindai -> Nilai -> Hitung -> Bayar untuk satu skenario."""
     try:
-        return pipeline.run(ScenarioParams(req.seed, req.n_assets, req.cloud_cover), _policy(req.policy))
+        return pipeline.run(ScenarioParams(req.seed, req.n_assets, round(req.cloud_cover, 2)), _policy(req.policy),
+                            drone_ids=tuple(req.drone_ids), video=tuple(v.model_dump() for v in req.video))
     except ValueError as e:                      # mis. file GeoJSON asli tidak valid
         raise HTTPException(status_code=422, detail=str(e)) from e
 

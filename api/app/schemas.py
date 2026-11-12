@@ -14,11 +14,29 @@ class Policy(BaseModel):
     mmi_trigger: float = Field(8.0, ge=6.0, le=9.5, description="Ambang guncangan MMI untuk uang muka")
 
 
-class ScenarioRequest(BaseModel):
+class VideoOverride(BaseModel):
+    id: str = Field(max_length=40)
+    job_id: str = Field(max_length=32)
+
+
+class ScenarioRef(BaseModel):
     seed: int = Field(2018, ge=0, le=999_999)
     n_assets: int = Field(320, ge=20, le=1200)
     cloud_cover: float = Field(0.12, ge=0, le=0.5)
+
+
+class ScenarioRequest(ScenarioRef):
     policy: Policy = Policy()
+    drone_ids: list[str] = Field(default_factory=list, max_length=400, description="Aset yang sudah dipindai drone")
+    video: list[VideoOverride] = Field(default_factory=list, max_length=50, description="Hasil video unggahan per aset")
+
+
+class MissionRequest(ScenarioRef):
+    max_targets: int = Field(46, ge=1, le=120)
+
+
+class ScanRequest(ScenarioRef):
+    asset_id: str = Field(max_length=40)
 
 
 class CalculatorRequest(BaseModel):
@@ -41,6 +59,7 @@ class AssetForCertificate(BaseModel):
     sdsi: float = Field(ge=0, le=1)
     zone: str
     observed: bool = True
+    source: Literal["satelit", "drone", "video"] = "satelit"
     claim: float
     advance: float
     topup: float
