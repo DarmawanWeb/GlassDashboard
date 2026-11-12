@@ -3,6 +3,7 @@
 import { useId, type ReactNode } from "react";
 import type { ZoneId } from "@/lib/types";
 import { ZONE } from "@/lib/palette";
+import { useI18n } from "@/lib/i18n";
 
 export function Segmented<T extends string>({ value, options, onChange, label }: {
   value: T;
@@ -49,17 +50,18 @@ export function RangeField({ label, value, display, min, max, step, onChange, hi
 }
 
 export function ZoneChip({ zone, suffix }: { zone: ZoneId; suffix?: string }) {
+  const { t } = useI18n();
   const z = ZONE[zone];
   return (
     <span className="chip" style={{ background: z.color, color: z.ink }}>
       <span className="chip-dot" style={{ background: z.ink === "#ffffff" ? "#fff" : "#13283f", opacity: 0.85 }} />
-      {z.label}{suffix ? `: ${suffix}` : ""}
+      {t.zone[zone].label}{suffix ? `: ${suffix}` : ""}
     </span>
   );
 }
 
 export function Ledger({ rows }: {
-  rows: { label: ReactNode; note?: ReactNode; value: ReactNode; kind?: "total" | "sub" }[];
+  rows: { label: ReactNode; note?: ReactNode; value: ReactNode; kind?: "total" | "sub"; wrap?: boolean }[];
 }) {
   return (
     <table className="ledger">
@@ -67,7 +69,7 @@ export function Ledger({ rows }: {
         {rows.map((r, i) => (
           <tr key={i} className={r.kind === "total" ? "ledger-total" : r.kind === "sub" ? "ledger-sub" : undefined}>
             <td>{r.label}{r.note && <span className="ledger-note">{r.note}</span>}</td>
-            <td>{r.value}</td>
+            <td className={r.wrap ? "ledger-wrap" : undefined}>{r.value}</td>
           </tr>
         ))}
       </tbody>
@@ -75,7 +77,9 @@ export function Ledger({ rows }: {
   );
 }
 
-export function Icon({ name, size = 18 }: { name: "refresh" | "info" | "expand" | "close" | "shield" | "check" | "x"; size?: number }) {
+type IconName = "refresh" | "info" | "expand" | "close" | "shield" | "check" | "x" | "sun" | "moon";
+
+export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
   switch (name) {
     case "refresh":
@@ -85,12 +89,15 @@ export function Icon({ name, size = 18 }: { name: "refresh" | "info" | "expand" 
     case "expand":
       return <svg {...common}><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>;
     case "close":
+    case "x":
       return <svg {...common}><path d="M6 6l12 12M18 6L6 18" /></svg>;
     case "shield":
       return <svg {...common}><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z" /></svg>;
     case "check":
       return <svg {...common}><path d="M5 12.5l4.5 4.5L19 7" /></svg>;
-    case "x":
-      return <svg {...common}><path d="M6 6l12 12M18 6L6 18" /></svg>;
+    case "sun":
+      return <svg {...common}><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4" /></svg>;
+    case "moon":
+      return <svg {...common}><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>;
   }
 }

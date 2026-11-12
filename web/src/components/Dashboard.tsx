@@ -7,6 +7,8 @@ import type {
 } from "@/lib/types";
 import { api, viewUrl } from "@/lib/api";
 import { MissionPlayer, type PlayerState } from "@/lib/mission";
+import { LANGS, errorText, setLang, useI18n } from "@/lib/i18n";
+import { setTheme, useTheme } from "@/lib/theme";
 import AssetCard from "./AssetCard";
 import AboutDialog from "./AboutDialog";
 import DroneFeed from "./drone/DroneFeed";
@@ -14,33 +16,31 @@ import { Icon } from "./ui/controls";
 import { StepBayar, StepHitung, StepLihat, StepNilai } from "./steps/Steps";
 import StepPindai from "./steps/StepPindai";
 
-const GlassMap = dynamic(() => import("./map/GlassMap"), {
-  ssr: false,
-  loading: () => <div className="sheet-frame"><div className="boot">Memuat peta…</div></div>,
-});
+function MapLoading() {
+  const { t } = useI18n();
+  return <div className="sheet-frame"><div className="boot">{t.app.loadingMap}</div></div>;
+}
 
-const STEPS: { id: StepId; label: string }[] = [
-  { id: "lihat", label: "Lihat" },
-  { id: "pindai", label: "Pindai" },
-  { id: "nilai", label: "Nilai" },
-  { id: "hitung", label: "Hitung" },
-  { id: "bayar", label: "Bayar" },
-];
+const GlassMap = dynamic(() => import("./map/GlassMap"), { ssr: false, loading: () => <MapLoading /> });
+
+const STEPS: StepId[] = ["lihat", "pindai", "nilai", "hitung", "bayar"];
 const VIEW_KINDS: ViewKind[] = ["rgb", "ai", "pre", "lidar", "thermal"];
 const noSub = () => () => {};
 const noSnap = (): PlayerState | null => null;
 
 function readHash(): StepId {
   if (typeof window === "undefined") return "lihat";
-  const h = window.location.hash.replace("#", "");
-  return (STEPS.find((s) => s.id === h)?.id ?? "lihat") as StepId;
+  const h = window.location.hash.replace("#", "") as StepId;
+  return STEPS.includes(h) ? h : "lihat";
 }
 
 export default function Dashboard() {
+  const { t, lang } = useI18n();
+  const theme = useTheme();
   const [meta, setMeta] = useState<Meta | null>(null);
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [baseScenario, setBaseScenario] = useState<Scenario | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
 
   const [step, setStepState] = useState<StepId>("lihat");
@@ -56,7 +56,7 @@ export default function Dashboard() {
 
   /* drone */
   const [mission, setMission] = useState<Mission | null>(null);
-  const [missionError, setMissionError] = useState<string | null>(null);
+  const [missionError, setMissionError] = useState<unknown>(null);
   const [maxTargets, setMaxTargets] = useState(46);
   const [scans, setScans] = useState<Record<string, ScanResult>>({});
   const [fetched, setFetched] = useState<Record<string, ScanResult>>({});   // sudah dianalisis, belum "dipindai" di animasi
@@ -70,7 +70,7 @@ export default function Dashboard() {
 
   const setStep = useCallback((s: StepId) => {
     setStepState(s);
-    if (typeof window !== "undefined") history.replaceState(null, "", `#${s}`);
+    if (typeof window !== "undefined") history.replaceState(null, "", `${window.location.search}#${s}`);
   }, []);
 
   useEffect(() => { setStepState(readHash()); }, []);
@@ -85,7 +85,7 @@ export default function Dashboard() {
         setParams((p) => ({ ...p, ...m.defaults.scenario }));
         setPolicy(m.defaults.policy);
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e));
   }, []);
 
   /* hasil drone & video yang dipakai di perhitungan */
@@ -98,7 +98,7 @@ export default function Dashboard() {
     if (!meta) return;
     const ctl = new AbortController();
     setLoading(true);
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       api.scenario(params, policy, droneIds, videoUsed, ctl.signal)
         .then((s) => {
           setScenario(s);
@@ -111,11 +111,11 @@ export default function Dashboard() {
         })
         .catch((e: Error) => {
           if (e.name === "AbortError") return;
-          setError(e.message);
+          setError(e);
           setLoading(false);
         });
     }, 140);
-    return () => { clearTimeout(t); ctl.abort(); };
+    return () => { clearTimeout(timer); ctl.abort(); };
     // droneKey mewakili isi droneIds & videoUsed
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta, params, policy, droneKey]);
@@ -142,12 +142,12 @@ export default function Dashboard() {
   useEffect(() => {
     if (!meta) return;
     const ctl = new AbortController();
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       api.mission(params, maxTargets, ctl.signal)
         .then((m) => { setMission(m); setMissionError(null); })
-        .catch((e: Error) => { if (e.name !== "AbortError") setMissionError(e.message); });
+        .catch((e: Error) => { if (e.name !== "AbortError") setMissionError(e); });
     }, 200);
-    return () => { clearTimeout(t); ctl.abort(); };
+    return () => { clearTimeout(timer); ctl.abort(); };
   }, [meta, params, maxTargets]);
 
   /* rute berubah saat drone diam -> pemutar lama dibuang (hasil pindaian tetap) */
@@ -209,27 +209,33 @@ export default function Dashboard() {
     else document.documentElement.requestFullscreen?.();
   }, []);
 
+  const toggleTheme = useCallback(() => setTheme(theme === "dark" ? "light" : "dark"), [theme]);
+  const toggleLang = useCallback(() => setLang(lang === "id" ? "en" : "id"), [lang]);
+
   /* pintasan presentasi */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.metaKey || e.ctrlKey || e.altKey || about) return;
-      const i = STEPS.findIndex((s) => s.id === step);
-      if (e.key === "ArrowRight" && i < STEPS.length - 1) setStep(STEPS[i + 1].id);
-      else if (e.key === "ArrowLeft" && i > 0) setStep(STEPS[i - 1].id);
-      else if (["1", "2", "3", "4", "5"].includes(e.key)) setStep(STEPS[Number(e.key) - 1].id);
+      const i = STEPS.indexOf(step);
+      const k = e.key.toLowerCase();
+      if (e.key === "ArrowRight" && i < STEPS.length - 1) setStep(STEPS[i + 1]);
+      else if (e.key === "ArrowLeft" && i > 0) setStep(STEPS[i - 1]);
+      else if (["1", "2", "3", "4", "5"].includes(e.key)) setStep(STEPS[Number(e.key) - 1]);
       else if (e.key === " " && step === "pindai") togglePlay();
-      else if (e.key.toLowerCase() === "s") newScenario();
-      else if (e.key.toLowerCase() === "f") fullscreen();
+      else if (k === "s") newScenario();
+      else if (k === "f") fullscreen();
+      else if (k === "l") toggleLang();
+      else if (k === "t") toggleTheme();
       else if (e.key === "Escape") { setSelectedId(null); setFeedBig(false); }
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step, about, setStep, newScenario, fullscreen, togglePlay]);
+  }, [step, about, setStep, newScenario, fullscreen, togglePlay, toggleLang, toggleTheme]);
 
-  const stepIndex = STEPS.findIndex((s) => s.id === step);
+  const stepIndex = STEPS.indexOf(step);
 
   return (
     <div className="app">
@@ -238,33 +244,44 @@ export default function Dashboard() {
         <div className="brand">
           <h1 className="wordmark">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/glass-logo.png" alt="GLASS" width={123} height={52} />
+            <img className="logo-light" src="/brand/glass-logo.png" alt="GLASS" width={123} height={52} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="logo-dark" src="/brand/glass-logo-reverse.png" alt="GLASS" width={123} height={52} />
           </h1>
-          <span className="tagline">Menilai kerusakan bencana dari satelit dan drone</span>
+          <span className="tagline">{t.app.tagline}</span>
         </div>
-        <nav className="steps-nav" aria-label="Langkah GLASS">
+        <nav className="steps-nav" aria-label={t.app.stepsNav}>
           <ol className="steps">
             {STEPS.map((s, i) => (
-              <li className={`step-item${i < stepIndex ? " step-done" : ""}`} key={s.id}>
+              <li className={`step-item${i < stepIndex ? " step-done" : ""}`} key={s}>
                 {i > 0 && <span className="step-link" aria-hidden="true" />}
-                <button type="button" className="step-btn" aria-current={step === s.id ? "step" : undefined} onClick={() => setStep(s.id)}>
-                  <span className="step-num">{i + 1}</span>{s.label}
+                <button type="button" className="step-btn" aria-current={step === s ? "step" : undefined} onClick={() => setStep(s)}>
+                  <span className="step-num">{i + 1}</span>{t.app.steps[s]}
                 </button>
               </li>
             ))}
           </ol>
         </nav>
         <div className="topbar-actions">
-          <button type="button" className="btn btn-primary" onClick={newScenario} disabled={!meta} title="Acak ulang lokasi aset dan kerusakan (S)">
-            <Icon name="refresh" /> Skenario baru
+          <button type="button" className="btn btn-primary" onClick={newScenario} disabled={!meta} title={t.app.newScenarioHint} aria-label={t.app.newScenario}>
+            <Icon name="refresh" /> <span className="btn-text">{t.app.newScenario}</span>
           </button>
-          <button type="button" className="btn btn-ghost btn-icon" onClick={() => setAbout(true)} aria-label="Tentang data dan sumber"><Icon name="info" /></button>
-          <button type="button" className="btn btn-ghost btn-icon" onClick={fullscreen} aria-label="Layar penuh (F)"><Icon name="expand" /></button>
+          <div className="lang-switch" role="group" aria-label={t.app.language} title={t.app.language}>
+            {LANGS.map((l) => (
+              <button key={l} type="button" aria-pressed={lang === l} onClick={() => setLang(l)} lang={l}>{l.toUpperCase()}</button>
+            ))}
+          </div>
+          <button type="button" className="btn btn-ghost btn-icon" onClick={toggleTheme}
+            aria-label={theme === "dark" ? t.app.toLight : t.app.toDark} title={theme === "dark" ? t.app.toLight : t.app.toDark}>
+            <Icon name={theme === "dark" ? "sun" : "moon"} />
+          </button>
+          <button type="button" className="btn btn-ghost btn-icon" onClick={() => setAbout(true)} aria-label={t.app.about} title={t.app.about}><Icon name="info" /></button>
+          <button type="button" className="btn btn-ghost btn-icon" onClick={fullscreen} aria-label={t.app.fullscreen} title={t.app.fullscreen}><Icon name="expand" /></button>
         </div>
       </header>
 
       <main className="main">
-        <section className="stage" aria-label="Peta">
+        <section className="stage" aria-label={t.app.mapRegion}>
           {meta ? (
             <GlassMap meta={meta} scenario={scenario} step={step} sensor={sensor} basemap={basemap} onBasemap={setBasemap}
               selectedId={selectedId} onSelect={setSelectedId} sweepKey={sweepKey} policy={policy}
@@ -278,21 +295,21 @@ export default function Dashboard() {
           ) : (
             <div className="sheet-frame">
               <div className="boot">
-                {error ? (
+                {error !== null ? (
                   <div className="error-box">
-                    <b>Mesin GLASS belum bisa dihubungi.</b>
-                    <p className="small">{error}</p>
-                    <button type="button" className="btn" onClick={() => location.reload()}>Muat ulang</button>
+                    <b>{t.app.engineDown}</b>
+                    <p className="small">{errorText(t, error)}</p>
+                    <button type="button" className="btn" onClick={() => location.reload()}>{t.app.reload}</button>
                   </div>
-                ) : "Menghubungkan ke mesin GLASS…"}
+                ) : t.app.connecting}
               </div>
             </div>
           )}
         </section>
 
-        <aside className="panel" ref={panelRef} aria-label="Penjelasan langkah">
+        <aside className="panel" ref={panelRef} aria-label={t.app.panelRegion}>
           <div className="panel-inner">
-            {error && meta && <div className="note note-bad small">Perhitungan gagal: {error}</div>}
+            {error !== null && meta && <div className="note note-bad small">{t.app.calcFailed(errorText(t, error))}</div>}
             {selected && meta && step !== "lihat" && step !== "pindai" && <AssetCard asset={selected} meta={meta} onClose={() => setSelectedId(null)} />}
             {meta && scenario ? (
               <>
@@ -316,10 +333,10 @@ export default function Dashboard() {
                 {selected && step === "lihat" && <AssetCard asset={selected} meta={meta} onClose={() => setSelectedId(null)} />}
               </>
             ) : (
-              !error && <div className="muted">Menghitung skenario…</div>
+              error === null && <div className="muted">{t.app.computing}</div>
             )}
             <div className="tiny" style={{ marginTop: 8 }}>
-              Data contoh untuk demonstrasi. <button type="button" className="btn-link" onClick={() => setAbout(true)}>Lihat sumber data</button>
+              {t.app.sampleNote} <button type="button" className="btn-link" onClick={() => setAbout(true)}>{t.app.seeSources}</button>
             </div>
           </div>
         </aside>

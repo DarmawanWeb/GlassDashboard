@@ -1,21 +1,35 @@
 import type {
-  Asset, CalcResult, Certificate, Meta, Mission, Policy, ScanResult, Scenario, ScenarioParams, UploadJob,
+  Asset, CalcResult, Certificate, Lang, Meta, Mission, Policy, ScanResult, Scenario, ScenarioParams, UploadJob,
   VerifyResult, VideoOverride, ViewKind, VlmAnswer,
 } from "./types";
 
+/** Galat dari API. `status` 0 berarti server tidak bisa dihubungi. */
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function call<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`/api/${path}`, {
-    method: body === undefined ? "GET" : "POST",
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    cache: "no-store",
-    signal,
-  });
-  if (!res.ok) throw new Error(await errorText(res));
+  let res: Response;
+  try {
+    res = await fetch(`/api/${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: body === undefined ? undefined : { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+      signal,
+    });
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    throw new ApiError(0, (e as Error).message);
+  }
+  if (!res.ok) throw new ApiError(res.status, await errorDetail(res));
   return res.json() as Promise<T>;
 }
 
-async function errorText(res: Response): Promise<string> {
+async function errorDetail(res: Response): Promise<string> {
   let detail = `${res.status} ${res.statusText}`;
   try {
     const j = await res.json();
@@ -36,23 +50,24 @@ export const api = {
     body: { asset_type: string; d_vol: number; d_surf: number; d_water: number; sum_insured: number; mmi: number; policy: Policy },
     signal?: AbortSignal,
   ) => call<CalcResult>("sdsi", body, signal),
-  issue: (asset: Asset) => call<Certificate>("certificates", asset),
+  issue: (asset: Asset, lang: Lang) => call<Certificate>(`certificates?lang=${lang}`, asset),
   verify: (cert: Certificate) => call<VerifyResult>("certificates/verify", cert),
 
   mission: (p: ScenarioParams, maxTargets: number, signal?: AbortSignal) =>
     call<Mission>("drone/mission", { ...ref(p), max_targets: maxTargets }, signal),
   scan: (p: ScenarioParams, assetId: string, signal?: AbortSignal) =>
     call<ScanResult>("drone/scan", { ...ref(p), asset_id: assetId }, signal),
-  ask: (p: ScenarioParams, assetId: string) => call<VlmAnswer>("drone/ask", { ...ref(p), asset_id: assetId }),
+  ask: (p: ScenarioParams, assetId: string, lang: Lang) => call<VlmAnswer>(`drone/ask?lang=${lang}`, { ...ref(p), asset_id: assetId }),
   uploadStatus: (jobId: string) => call<UploadJob>(`drone/uploads/${jobId}`),
 
   /** Unggah video dengan progres (fetch belum bisa melaporkan progres unggah). */
-  upload: (file: File, assetId: string | null, useVlm: boolean, onProgress: (f: number) => void) =>
+  upload: (file: File, assetId: string | null, useVlm: boolean, lang: Lang, onProgress: (f: number) => void) =>
     new Promise<UploadJob>((resolve, reject) => {
       const fd = new FormData();
       fd.append("file", file);
       if (assetId) fd.append("asset_id", assetId);
       fd.append("use_vlm", useVlm ? "true" : "false");
+      fd.append("lang", lang);
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/drone/uploads");
       xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
@@ -60,9 +75,9 @@ export const api = {
         let j: { detail?: string } & Partial<UploadJob> = {};
         try { j = JSON.parse(xhr.responseText); } catch { /* bukan JSON */ }
         if (xhr.status >= 200 && xhr.status < 300) resolve(j as UploadJob);
-        else reject(new Error(j.detail ?? `${xhr.status} ${xhr.statusText}`));
+        else reject(new ApiError(xhr.status, j.detail ?? `${xhr.status} ${xhr.statusText}`));
       };
-      xhr.onerror = () => reject(new Error("Unggahan gagal. Cek koneksi."));
+      xhr.onerror = () => reject(new ApiError(0, "network"));
       xhr.send(fd);
     }),
 };

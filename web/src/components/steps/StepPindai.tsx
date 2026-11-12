@@ -2,8 +2,8 @@
 
 import type { Meta, Mission, ScanResult, Scenario, VideoOverride } from "@/lib/types";
 import type { PlayerState } from "@/lib/mission";
-import { DAMAGE_CLASS, DRONE_SENSOR, TYPE_LABEL } from "@/lib/palette";
-import { count, dec, pct, rupiah } from "@/lib/format";
+import { DAMAGE_CLASS, DRONE_SENSORS } from "@/lib/palette";
+import { errorText, useI18n } from "@/lib/i18n";
 import { Ledger, RangeField, Segmented } from "../ui/controls";
 import VideoUpload from "../drone/VideoUpload";
 
@@ -12,7 +12,7 @@ export interface StepPindaiProps {
   scenario: Scenario;
   baseScenario: Scenario | null;
   mission: Mission | null;
-  missionError: string | null;
+  missionError: unknown;
   state: PlayerState | null;
   scans: Record<string, ScanResult>;
   order: string[];
@@ -33,13 +33,15 @@ export interface StepPindaiProps {
   onRemoveVideo: (id: string) => void;
 }
 
-function minutes(m: number) {
-  const h = Math.floor(m / 60), r = Math.round(m % 60);
-  return h ? `${h} jam ${r} menit` : `${r} menit`;
+/** "sebelum → sesudah"; boleh patah baris di panah kalau panel sempit. */
+function Change({ a, b }: { a: string; b: string }) {
+  return <><span className="nowrap">{a}</span> → <span className="nowrap">{b}</span></>;
 }
 
 export default function StepPindai(p: StepPindaiProps) {
   const { meta, scenario, baseScenario, mission, missionError, state, scans, order } = p;
+  const { t, f } = useI18n();
+  const P = t.pindai;
   const status = state?.status ?? "idle";
   const flying = status === "playing" || status === "paused";
   const done = status === "done";
@@ -54,96 +56,86 @@ export default function StepPindai(p: StepPindaiProps) {
   return (
     <>
       <header className="step-head">
-        <h2>Drone memeriksa dari dekat</h2>
-        <p>
-          Satelit cepat tapi bisa terhalang awan. Drone terbang di bawah awan, memotret tiap bangunan dengan tiga sensor,
-          lalu AI menghitung persentase kerusakannya.
-        </p>
+        <h2>{P.title}</h2>
+        <p>{P.lead}</p>
       </header>
 
       <div className="sensor-trio">
-        {(Object.keys(DRONE_SENSOR) as (keyof typeof DRONE_SENSOR)[]).map((k) => (
+        {DRONE_SENSORS.map((k) => (
           <div key={k} className="sensor-tile">
-            <b>{DRONE_SENSOR[k].label}</b>
-            <span>{DRONE_SENSOR[k].reads}</span>
-            <small>{DRONE_SENSOR[k].spec}</small>
+            <b>{t.droneSensor[k].label}</b>
+            <span>{t.droneSensor[k].reads}</span>
+            <small>{t.droneSensor[k].spec}</small>
           </div>
         ))}
       </div>
 
       <div>
-        <h3 className="section-title">Rencana misi</h3>
-        {missionError && <div className="note note-bad small">{missionError}</div>}
+        <h3 className="section-title">{P.plan}</h3>
+        {missionError !== null && <div className="note note-bad small">{errorText(t, missionError)}</div>}
         {mission ? (
           <Ledger rows={[
-            { label: "Aset yang diperiksa", note: `${mission.stats.n_cloud} fotonya tertutup awan, ${mission.stats.n_severe} rusak berat menurut satelit`, value: count(n) },
-            { label: "Jarak terbang", note: "rute disusun otomatis dari posko", value: `${dec(mission.stats.distance_km, 1)} km` },
-            { label: "Waktu terbang (perkiraan)", note: `${mission.stats.speed_ms} m/s, ${mission.stats.hover_s} detik per aset`, value: minutes(mission.stats.flight_min) },
-            { label: "Baterai", note: `±${mission.stats.battery_min} menit per baterai`, value: count(mission.stats.batteries) },
+            { label: P.targets, note: P.targetsNote(mission.stats.n_cloud, mission.stats.n_severe), value: f.count(n) },
+            { label: P.distance, note: P.distanceNote, value: `${f.dec(mission.stats.distance_km, 1)} km` },
+            { label: P.flightTime, note: P.flightNote(mission.stats.speed_ms, mission.stats.hover_s), value: f.minutes(mission.stats.flight_min) },
+            { label: P.batteries, note: P.batteriesNote(mission.stats.battery_min), value: f.count(mission.stats.batteries) },
           ]} />
-        ) : !missionError && <div className="muted small">Menyusun rute…</div>}
+        ) : missionError === null && <div className="muted small">{P.planning}</div>}
       </div>
 
-      <RangeField label="Jumlah aset target" value={p.maxTargets} min={6} max={80} step={1} onChange={p.onMaxTargets}
-        display={`${p.maxTargets} aset`} hint={flying ? "Hentikan misi dulu untuk mengubah target." : "Aset tertutup awan selalu didahulukan."}
-        disabled={flying} />
+      <RangeField label={P.maxTargets} value={p.maxTargets} min={6} max={80} step={1} onChange={p.onMaxTargets}
+        display={P.nAssets(p.maxTargets)} hint={flying ? P.maxTargetsHintFlying : P.maxTargetsHint} disabled={flying} />
 
       <div className="mission-controls">
         {status === "idle" && (
-          <button type="button" className="btn btn-primary btn-drone" onClick={p.onStart} disabled={!mission || n === 0}>
-            Terbangkan drone
-          </button>
+          <button type="button" className="btn btn-primary btn-drone" onClick={p.onStart} disabled={!mission || n === 0}>{P.launch}</button>
         )}
-        {status === "playing" && !state?.skipping && <button type="button" className="btn btn-primary" onClick={p.onPause}>Jeda</button>}
-        {status === "paused" && <button type="button" className="btn btn-primary" onClick={p.onResume}>Lanjutkan</button>}
+        {status === "playing" && !state?.skipping && <button type="button" className="btn btn-primary" onClick={p.onPause}>{P.pause}</button>}
+        {status === "paused" && <button type="button" className="btn btn-primary" onClick={p.onResume}>{P.resume}</button>}
         {flying && !state?.skipping && (
           <>
-            <Segmented label="Kecepatan" value={String(state?.speed ?? 2)} onChange={(v) => p.onSpeed(Number(v))}
+            <Segmented label={P.speed} value={String(state?.speed ?? 2)} onChange={(v) => p.onSpeed(Number(v))}
               options={[{ value: "1", label: "1×" }, { value: "2", label: "2×" }, { value: "4", label: "4×" }]} />
-            <button type="button" className="btn" onClick={p.onSkip}>Lewati ke hasil</button>
+            <button type="button" className="btn" onClick={p.onSkip}>{P.skip}</button>
           </>
         )}
-        {(done || flying) && <button type="button" className="btn btn-ghost" onClick={p.onReset}>Ulangi misi</button>}
+        {(done || flying) && <button type="button" className="btn btn-ghost" onClick={p.onReset}>{P.restart}</button>}
       </div>
 
       {(flying || done || state?.skipping) && (
-        <div className="mission-progress" aria-label="Kemajuan misi">
+        <div className="mission-progress" aria-label={P.progressLabel}>
           <div className="mission-bar"><i style={{ width: `${n ? (scanned / n) * 100 : 0}%` }} /></div>
-          <span>{state?.skipping ? "Memproses semua aset" : done ? "Misi selesai" : "Aset diperiksa"}: {scanned} dari {n}</span>
+          <span>{state?.skipping ? P.processing : done ? P.finished : P.inspected}: {t.of(scanned, n)}</span>
         </div>
       )}
 
       {scanned > 0 && before && (
         <div>
-          <h3 className="section-title">Yang berubah setelah drone terbang</h3>
+          <h3 className="section-title">{P.changed}</h3>
           <Ledger rows={[
-            { label: "Foto tertutup awan", note: "aset yang nilainya masih tebakan", value: `${count(before.n_hidden)} → ${count(after.n_hidden)}` },
-            { label: "IBNR (klaim tebakan)", value: `${rupiah(before.ibnr)} → ${rupiah(after.ibnr)}` },
-            { label: "Cadangan klaim (terukur)", value: `${rupiah(before.case_reserves)} → ${rupiah(after.case_reserves)}` },
-            { label: "Total dana disisihkan", value: `${rupiah(before.total_reserves)} → ${rupiah(after.total_reserves)}`, kind: "total" },
+            { label: P.hiddenRow, note: P.hiddenRowNote, value: <Change a={f.count(before.n_hidden)} b={f.count(after.n_hidden)} /> },
+            { label: P.ibnrRow, value: <Change a={f.rupiah(before.ibnr)} b={f.rupiah(after.ibnr)} />, wrap: true },
+            { label: P.caseRow, value: <Change a={f.rupiah(before.case_reserves)} b={f.rupiah(after.case_reserves)} />, wrap: true },
+            { label: P.totalRow, value: <Change a={f.rupiah(before.total_reserves)} b={f.rupiah(after.total_reserves)} />, kind: "total", wrap: true },
           ]} />
           <label className="check-row">
             <input type="checkbox" checked={p.useDrone} onChange={(e) => p.onUseDrone(e.target.checked)} />
-            Pakai hasil drone di langkah Nilai, Hitung, dan Bayar
+            {P.useDrone}
           </label>
         </div>
       )}
 
       {results.length > 0 && (
         <div>
-          <h3 className="section-title">Hasil AI per aset</h3>
-          <p className="small muted" style={{ margin: "0 0 8px" }}>
-            Ketepatan kelas dibanding kondisi sebenarnya di simulasi: <b style={{ color: "var(--ink)" }}>{pct(acc)}</b> dari {results.length} aset;
-            selisih rata-rata persentase atap {dec(mae * 100, 1)} poin. Angka ini dari dunia simulasi; untuk foto asli
-            ketepatannya harus diuji ulang dengan data lapangan.
-          </p>
+          <h3 className="section-title">{P.results}</h3>
+          <p className="small muted" style={{ margin: "0 0 8px" }}>{P.accuracy(f.pct(acc), results.length, f.dec(mae * 100, 1))}</p>
           <div className="scan-list" role="list">
             {[...results].reverse().map((r) => (
               <button key={r.id} type="button" role="listitem" className="scan-row" aria-pressed={p.selectedId === r.id} onClick={() => p.onSelect(r.id)}>
-                <span className="scan-id">{r.id}<small>{TYPE_LABEL[r.type]}{r.observed_by_satellite ? "" : ", tadinya tertutup awan"}</small></span>
-                <span className="scan-pct">{pct(r.estimate.roof)}</span>
+                <span className="scan-id">{r.id}<small>{t.type[r.type]}{r.observed_by_satellite ? "" : P.wasHidden}</small></span>
+                <span className="scan-pct">{f.pct(r.estimate.roof)}</span>
                 <span className="det-chip" style={{ background: DAMAGE_CLASS[r.estimate.cls].color, color: DAMAGE_CLASS[r.estimate.cls].ink }}>
-                  {DAMAGE_CLASS[r.estimate.cls].label}
+                  {t.damage[r.estimate.cls]}
                 </span>
               </button>
             ))}
@@ -155,11 +147,7 @@ export default function StepPindai(p: StepPindaiProps) {
       <VideoUpload meta={meta} mission={mission} selectedId={p.selectedId} video={p.video}
         onApply={p.onApplyVideo} onRemove={p.onRemoveVideo} />
 
-      <div className="tiny">
-        Citra drone di langkah ini dibuat oleh simulator dari data contoh (bukan foto asli). Karena dunianya buatan, kondisi
-        sebenarnya diketahui dan ketepatan AI bisa diukur. Di lapangan, drone dengan kamera RGB, LiDAR, dan termal mengambil
-        data yang sama.
-      </div>
+      <div className="tiny">{P.footnote}</div>
     </>
   );
 }
