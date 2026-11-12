@@ -59,7 +59,10 @@ export const id = {
     lidar: { label: "LiDAR", spec: "> 100 titik/m²", reads: "runtuhan & perubahan bentuk" },
     thermal: { label: "Termal LWIR", spec: "< 50 mK", reads: "genangan & dinding basah" },
   },
-  method: { cv: "visi komputer", "vlm+cv": "VLM + visi komputer" } as Record<string, string>,
+  method: {
+    cv: "visi komputer", change: "deteksi perubahan sebelum-sesudah",
+    "vlm+cv": "VLM + visi komputer", "vlm+change": "VLM + deteksi perubahan",
+  } as Record<string, string>,
   of: (a: string | number, b: string | number) => `${a} dari ${b}`,
 
   lihat: {
@@ -303,15 +306,27 @@ export const id = {
     asking: "Bertanya…",
     noSummary: "(tanpa ringkasan)",
     vlmEstimate: (cls: string, p: number, s: string) => `Perkiraan VLM: ${cls}, ${p}% rusak, ${s} detik.`,
+    why: "Kenapa AI menilai begini?",
+    reasons: {
+      roof: (p: string) => `Kamera RGB: ${p} tapak bangunan berubah warna atau tekstur dibanding digital twin (atap hilang, puing).`,
+      vol: (p: string) => `LiDAR: tinggi permukaan turun rata-rata ${p} dari tinggi bangunan (runtuh atau melesak).`,
+      wet: (p: string) => `Termal: ${p} tanah di sekitar bangunan lebih dingin dari 29,8 °C dan bukan tumbuhan (lumpur atau genangan).`,
+      area: (n: number, severe: number) => `Di sekitarnya ${n} bangunan lain terdeteksi, ${severe} rusak berat atau hancur.`,
+      confidence: (p: string) => `Keyakinan AI ${p}, makin rendah kalau persentasenya dekat batas kelas.`,
+    },
   },
 
   upload: {
     title: "Coba dengan video drone sendiri",
-    lead: "Unggah video atau foto udara. AI memeriksa ±1 gambar per detik, menandai puing (merah) dan genangan (biru), lalu hasilnya bisa dipakai untuk satu aset.",
-    sample: "Unduh contoh video simulasi",
+    lead: "Unggah video atau foto udara. AI memeriksa ±1 gambar per detik, menandai puing (merah) dan genangan (biru), memberi garis tepi tiap bangunan sesuai kelasnya, lalu hasilnya bisa dipakai untuk satu aset.",
+    samples: "Contoh video simulasi",
+    sampleAfter: "sesudah",
+    sampleBefore: "sebelum bencana",
+    preFile: "Sebelum (opsional)",
+    preHint: "Video atau foto area yang sama sebelum bencana. Kalau ada, AI menyejajarkan tiap gambar dengan gambar sebelumnya lalu menghitung bagian bangunan yang berubah, sama seperti di misi drone.",
     forAsset: "Untuk aset",
     noAsset: "Tanpa aset (hanya analisis)",
-    file: "File",
+    file: "Sesudah",
     vlmAsk: "Minta VLM menjelaskan gambarnya",
     vlmOff: "(belum aktif di server)",
     vlmTitleOff: "Aktifkan GLASS_VLM_PROVIDER di server",
@@ -328,8 +343,13 @@ export const id = {
     vlmDisabled: "VLM belum diaktifkan di server, jadi hanya analisis visi komputer yang dipakai.",
     frameAlt: (i: number) => `Gambar ke-${i} dari video`,
     frameCaption: (t: string, d: string, w: string) => `Detik ${t}: ${d} rusak, genangan ${w}`,
-    showRaw: "Lihat foto asli",
-    showAi: "Lihat mata AI",
+    views: { ai: "Mata AI", raw: "Sesudah", pre: "Sebelum" },
+    viewGroup: "Tampilan gambar",
+    buildings: (n: number, by: number[]) =>
+      `${n} bangunan${by[3] ? `, ${by[3]} hancur` : ""}${by[2] ? `, ${by[2]} rusak berat` : ""}${by[1] ? `, ${by[1]} rusak ringan` : ""}.`,
+    alignedNote: (k: number, n: number) => `Disejajarkan dengan gambar sebelum ke-${k} (${n} titik cocok).`,
+    notAligned: "Tidak bisa disejajarkan dengan video sebelum, jadi dinilai tanpa pembanding.",
+    alignedCount: (a: number, n: number) => `${a} dari ${n} gambar berhasil disejajarkan dengan video sebelum.`,
     strip: "Gambar dari video",
     applied: (id: string) => `Sudah dipakai untuk ${id}. Lihat perubahannya di langkah Nilai dan Hitung.`,
     apply: (id: string) => `Pakai hasil ini untuk ${id}`,
@@ -342,6 +362,7 @@ export const id = {
       failed: "Analisis gagal.",
     } as Record<string, string>,
     network: "Unggahan gagal. Cek koneksi.",
+    timeline: "Persentase rusak per detik",
   },
 
   map: {
@@ -424,6 +445,8 @@ export const id = {
     lossAtLeast: "kerugian ≥",
     pmlNote: (rp: string) => `Menurut asumsi model, kerugian sebesar skenario ini terjadi ${rp}.`,
     sdsiScale: (v: string) => `Skor SDSI ${v} pada skala zona`,
+    damageTimeline: "Persentase kerusakan per gambar video",
+    second: (s: string) => `detik ${s}`,
   },
 
 

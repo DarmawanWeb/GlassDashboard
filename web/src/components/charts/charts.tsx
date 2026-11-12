@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import type { Pml, TypeRow, ZoneId, ZoneRow } from "@/lib/types";
-import { SERIES, ZONE, ZONES } from "@/lib/palette";
+import type { Pml, TypeRow, UploadFrame, ZoneId, ZoneRow } from "@/lib/types";
+import { DAMAGE_CLASS, SERIES, ZONE, ZONES } from "@/lib/palette";
 import { useI18n } from "@/lib/i18n";
 
 /* Warna teks, kisi, dan permukaan memakai kelas CSS (c-ink, c-ink2, c-grid, c-surface)
@@ -14,6 +14,13 @@ function bar(x: number, y: number, w: number, h: number, r = 4, roundLeft = fals
   const rr = Math.min(r, w / 2, h / 2);
   const rl = roundLeft ? rr : 0, rrt = roundRight ? rr : 0;
   return `M${x + rl},${y} H${x + w - rrt} Q${x + w},${y} ${x + w},${y + rrt} V${y + h - rrt} Q${x + w},${y + h} ${x + w - rrt},${y + h} H${x + rl} Q${x},${y + h} ${x},${y + h - rl} V${y + rl} Q${x},${y} ${x + rl},${y} Z`;
+}
+
+/** Batang vertikal: ujung atas membulat, pangkal di garis dasar lurus. */
+function column(x: number, y: number, w: number, h: number, r = 3) {
+  if (h <= 0) return "";
+  const rr = Math.min(r, w / 2, h);
+  return `M${x},${y + h} V${y + rr} Q${x},${y} ${x + rr},${y} H${x + w - rr} Q${x + w},${y} ${x + w},${y + rr} V${y + h} Z`;
 }
 
 function Tip({ x, y, children }: { x: number; y: number; children: ReactNode }) {
@@ -232,3 +239,48 @@ export function SdsiScale({ value, label }: { value: number; label?: string }) {
   );
 }
 
+/* ---------- kerusakan per gambar video ---------- */
+export function DamageTimeline({ frames, selected, onSelect }: {
+  frames: UploadFrame[]; selected: number; onSelect: (i: number) => void;
+}) {
+  const { t, f } = useI18n();
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 400, H = 92, m = { l: 26, r: 4, t: 8, b: 16 };
+  const n = Math.max(frames.length, 1);
+  const slot = (W - m.l - m.r) / n;
+  const bw = Math.max(Math.min(slot - 2, 22), 2);
+  const ly = (v: number) => m.t + (1 - v) * (H - m.t - m.b);
+  const hf = hover !== null ? frames.find((q) => q.i === hover) : undefined;
+  return (
+    <div className="chart-wrap">
+      <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t.charts.damageTimeline}>
+        {[0, 0.5, 1].map((v) => (
+          <g key={v}>
+            <line className="c-grid" x1={m.l} x2={W - m.r} y1={ly(v)} y2={ly(v)} />
+            <text className="c-ink2" x={m.l - 4} y={ly(v) + 3.5} fontSize={10} textAnchor="end">{f.pct(v)}</text>
+          </g>
+        ))}
+        {/* batas kelas kerusakan: 10%, 39%, 72% */}
+        {[0.1, 0.39, 0.72].map((v) => (
+          <line key={v} className="c-ink-s" x1={m.l} x2={W - m.r} y1={ly(v)} y2={ly(v)} strokeOpacity={0.18} strokeDasharray="2 3" />
+        ))}
+        {frames.map((q, k) => {
+          const x = m.l + k * slot + (slot - bw) / 2;
+          const sel = q.i === selected;
+          return (
+            <g key={q.i} onMouseEnter={() => setHover(q.i)} onMouseLeave={() => setHover(null)} onClick={() => onSelect(q.i)} style={{ cursor: "pointer" }}>
+              <rect x={m.l + k * slot} y={m.t} width={slot} height={H - m.t - m.b} fill="transparent" />
+              <path d={column(x, ly(q.damage), bw, ly(0) - ly(q.damage))} fill={DAMAGE_CLASS[q.cls].color} opacity={sel ? 1 : 0.78} />
+              {sel && <path className="c-ink" d={`M${x + bw / 2 - 4},${H - 2} L${x + bw / 2 + 4},${H - 2} L${x + bw / 2},${H - 8} Z`} />}
+            </g>
+          );
+        })}
+      </svg>
+      {hf && (
+        <Tip x={Math.min(Math.max(((m.l + frames.indexOf(hf) * slot + slot / 2) / W) * 100, 18), 82)} y={(ly(hf.damage) / H) * 100}>
+          {t.charts.second(f.dec(hf.t, 1))}: <b>{f.pct(hf.damage)}</b>, {t.damage[hf.cls].toLowerCase()}
+        </Tip>
+      )}
+    </div>
+  );
+}

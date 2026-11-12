@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Meta, Mission, UploadJob, VideoOverride } from "@/lib/types";
-import { api, frameUrl } from "@/lib/api";
+import { api, frameUrl, type FrameKind } from "@/lib/api";
 import { DAMAGE_CLASS } from "@/lib/palette";
 import { errorText, useI18n } from "@/lib/i18n";
+import { DamageTimeline } from "../charts/charts";
+import { Segmented } from "../ui/controls";
 
 type Phase = "idle" | "uploading" | "analyzing" | "done" | "error";
 
@@ -17,7 +19,8 @@ export interface VideoUploadProps {
   onRemove: (id: string) => void;
 }
 
-/** Uji dengan video drone sendiri: unggah, analisis per gambar, lalu terapkan ke satu aset. */
+/** Uji dengan video drone sendiri: unggah (boleh dengan video sebelum bencana), analisis per gambar,
+ *  lalu terapkan ke satu aset. */
 export default function VideoUpload({ meta, mission, selectedId, video, onApply, onRemove }: VideoUploadProps) {
   const { t, f, lang } = useI18n();
   const U = t.upload;
@@ -25,13 +28,14 @@ export default function VideoUpload({ meta, mission, selectedId, video, onApply,
   const ids = Array.from(new Set([selectedId, ...(mission?.targets.map((x) => x.id) ?? [])].filter(Boolean))) as string[];
   const [assetId, setAssetId] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
+  const [preFile, setPreFile] = useState<File | null>(null);
   const [useVlm, setUseVlm] = useState(vlm.enabled);
   const [phase, setPhase] = useState<Phase>("idle");
   const [up, setUp] = useState(0);
   const [job, setJob] = useState<UploadJob | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState(0);
-  const [kind, setKind] = useState<"ai" | "raw">("ai");
+  const [kind, setKind] = useState<FrameKind>("ai");
   const poll = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { if (selectedId) setAssetId(selectedId); }, [selectedId]);
@@ -58,15 +62,18 @@ export default function VideoUpload({ meta, mission, selectedId, video, onApply,
     }, 700);
   };
 
+  const reset = () => { setPhase("idle"); setJob(null); setErr(null); };
+
   const start = async () => {
     if (!file) return;
-    if (file.size > meta.drone.max_upload_mb * 1024 * 1024) {
+    const limit = meta.drone.max_upload_mb * 1024 * 1024;
+    if (file.size > limit || (preFile && preFile.size > limit)) {
       setErr(U.tooBig(meta.drone.max_upload_mb));
       return;
     }
-    setErr(null); setJob(null); setPhase("uploading"); setUp(0);
+    setErr(null); setJob(null); setPhase("uploading"); setUp(0); setKind("ai");
     try {
-      const j = await api.upload(file, assetId || null, useVlm && vlm.enabled, lang, setUp);
+      const j = await api.upload(file, preFile, assetId || null, useVlm && vlm.enabled, lang, setUp);
       setJob(j);
       setPhase("analyzing");
       watch(j.id);
@@ -81,12 +88,15 @@ export default function VideoUpload({ meta, mission, selectedId, video, onApply,
   const applied = job ? video.find((v) => v.job_id === job.id) : undefined;
   const busy = phase === "uploading" || phase === "analyzing";
   const progress = phase === "uploading" ? up * 0.3 : phase === "analyzing" ? 0.3 + 0.7 * (job?.progress ?? 0) : phase === "done" ? 1 : 0;
+  const views: FrameKind[] = frame?.aligned ? ["ai", "raw", "pre"] : ["ai", "raw"];
+  const shownKind: FrameKind = views.includes(kind) ? kind : "ai";
 
   return (
     <div className="upload">
       <h3 className="section-title">{U.title}</h3>
       <p className="small muted" style={{ margin: "0 0 10px" }}>
-        {U.lead} <a href="/sample/glass-drone-simulasi.mp4" download>{U.sample}</a>.
+        {U.lead} {U.samples}: <a href="/sample/glass-drone-simulasi.mp4" download>{U.sampleAfter}</a>,{" "}
+        <a href="/sample/glass-drone-sebelum.mp4" download>{U.sampleBefore}</a>.
       </p>
       <div className="upload-grid">
         <label className="field-label" htmlFor="up-asset">{U.forAsset}</label>
@@ -96,8 +106,12 @@ export default function VideoUpload({ meta, mission, selectedId, video, onApply,
         </select>
         <label className="field-label" htmlFor="up-file">{U.file}</label>
         <input id="up-file" className="file" type="file" accept="video/*,image/*" disabled={busy}
-          onChange={(e) => { setFile(e.target.files?.[0] ?? null); setPhase("idle"); setJob(null); setErr(null); }} />
+          onChange={(e) => { setFile(e.target.files?.[0] ?? null); reset(); }} />
+        <label className="field-label" htmlFor="up-pre">{U.preFile}</label>
+        <input id="up-pre" className="file" type="file" accept="video/*,image/*" disabled={busy} aria-describedby="up-pre-hint"
+          onChange={(e) => { setPreFile(e.target.files?.[0] ?? null); reset(); }} />
       </div>
+      <div id="up-pre-hint" className="field-hint">{U.preHint}</div>
       <label className="check-row" title={vlm.enabled ? U.vlmModel(vlm.model) : U.vlmTitleOff}>
         <input type="checkbox" checked={useVlm && vlm.enabled} disabled={!vlm.enabled || busy} onChange={(e) => setUseVlm(e.target.checked)} />
         {U.vlmAsk} {vlm.enabled ? `(${vlm.model})` : U.vlmOff}
@@ -120,19 +134,26 @@ export default function VideoUpload({ meta, mission, selectedId, video, onApply,
             <b>{U.damaged(f.pct(r.damage))}</b>
             <span className="tiny">{U.methodLine(t.method[r.method] ?? r.method, r.frames_used, r.vlm_damage !== null ? f.pct(r.cv_damage) : null)}</span>
           </div>
+          {r.pre_frames > 0 && <div className="tiny">{U.alignedCount(r.aligned_frames, r.frames)}</div>}
           {r.summary && <div className="feed-vlm">{r.summary}</div>}
           {r.vlm_status === "disabled" && <div className="tiny">{U.vlmDisabled}</div>}
           {r.vlm_status === "error" && r.vlm_note && <div className="tiny">{r.vlm_note}</div>}
+          {job.frames.length > 1 && (
+            <div>
+              <div className="tiny" style={{ marginBottom: 2 }}>{U.timeline}</div>
+              <DamageTimeline frames={job.frames} selected={sel} onSelect={setSel} />
+            </div>
+          )}
           {frame && (
             <figure className="upload-frame">
+              <Segmented label={U.viewGroup} value={shownKind} onChange={setKind}
+                options={views.map((v) => ({ value: v, label: U.views[v] }))} />
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={frameUrl(job.id, frame.i, kind)} alt={U.frameAlt(frame.i + 1)} />
+              <img src={frameUrl(job.id, frame.i, shownKind)} alt={U.frameAlt(frame.i + 1)} />
               <figcaption>
-                {U.frameCaption(f.dec(frame.t, 1), f.pct(frame.damage), f.pct(frame.water))}
-                {frame.vlm ? `. VLM: ${frame.vlm.summary}` : ""}
-                <button type="button" className="btn-link" onClick={() => setKind(kind === "ai" ? "raw" : "ai")}>
-                  {kind === "ai" ? U.showRaw : U.showAi}
-                </button>
+                {U.frameCaption(f.dec(frame.t, 1), f.pct(frame.damage), f.pct(frame.water))}. {U.buildings(frame.buildings, frame.by_class)}
+                {r.pre_frames > 0 && <> {frame.aligned && frame.pre_index !== null ? U.alignedNote(frame.pre_index + 1, frame.inliers) : U.notAligned}</>}
+                {frame.vlm ? ` VLM: ${frame.vlm.summary}` : ""}
               </figcaption>
             </figure>
           )}

@@ -38,6 +38,7 @@ export default function DroneFeed(p: DroneFeedProps) {
   useEffect(() => { fmtRef.current = f; }, [f]);
   const [tab, setTab] = useState<Tab>("rgb");
   const [swipe, setSwipe] = useState(0.5);
+  const [why, setWhy] = useState(false);
   const [ask, setAsk] = useState<{ id: string; busy: boolean; answer?: VlmAnswer; error?: unknown } | null>(null);
 
   const flying = !!state && !state.skipping && (state.status === "playing" || state.status === "paused")
@@ -202,12 +203,24 @@ export default function DroneFeed(p: DroneFeedProps) {
               {F.truth(t.damage[scan.truth.cls].toLowerCase(), f.pct(scan.truth.roof))}
               {scan.truth.cls === e.cls ? F.hit : F.miss}
             </span>
-            {vlmEnabled && (
-              <button type="button" className="btn btn-ghost feed-ask" onClick={askAi} disabled={ask?.busy}>
-                {ask?.busy ? F.asking : F.ask}
-              </button>
-            )}
+            <div className="feed-actions">
+              <button type="button" className="btn btn-ghost feed-ask" aria-expanded={why} onClick={() => setWhy(!why)}>{F.why}</button>
+              {vlmEnabled && (
+                <button type="button" className="btn btn-ghost feed-ask" onClick={askAi} disabled={ask?.busy}>
+                  {ask?.busy ? F.asking : F.ask}
+                </button>
+              )}
+            </div>
           </div>
+          {why && (
+            <ul className="feed-why">
+              <li><i style={{ background: "#ff5a4e" }} />{F.reasons.roof(f.pct(e.roof))}</li>
+              <li><i style={{ background: "#7efe55" }} />{F.reasons.vol(f.pct(e.vol))}</li>
+              <li><i style={{ background: "#4aa8ff" }} />{F.reasons.wet(f.pct(e.wet))}</li>
+              <li><i style={{ background: "#c6d3e1" }} />{F.reasons.area(scan.area.n_buildings, scan.area.n_severe)}</li>
+              <li><i style={{ background: "#c6d3e1" }} />{F.reasons.confidence(f.pct(e.confidence))}</li>
+            </ul>
+          )}
           {ask?.answer && (
             <div className="feed-vlm">
               <b>{ask.answer.model}:</b> {ask.answer.summary || F.noSummary}{" "}

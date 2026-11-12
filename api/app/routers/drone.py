@@ -78,33 +78,45 @@ def ask(req: ScanRequest, lang: Annotated[Literal["id", "en"], Query()] = "id") 
         raise HTTPException(status_code=422, detail=str(e)) from e
 
 
+async def _save(upload_file: UploadFile, dest, limit: int) -> int:
+    size = 0
+    with open(dest, "wb") as f:
+        while chunk := await upload_file.read(1 << 20):
+            size += len(chunk)
+            if size > limit:
+                raise HTTPException(status_code=413, detail=f"File terlalu besar (maks {limit // (1024 * 1024)} MB)")
+            f.write(chunk)
+    return size
+
+
 @router.post("/uploads")
 async def upload(file: Annotated[UploadFile, File()], asset_id: Annotated[str | None, Form()] = None,
                  use_vlm: Annotated[bool, Form()] = False,
-                 lang: Annotated[Literal["id", "en"], Form()] = "id") -> dict:
-    """Unggah video (atau foto) drone. Dianalisis di latar belakang; cek status di /uploads/{id}."""
+                 lang: Annotated[Literal["id", "en"], Form()] = "id",
+                 pre_file: Annotated[UploadFile | None, File()] = None) -> dict:
+    """Unggah video (atau foto) drone sesudah bencana, dan boleh juga video sebelum bencana (pre_file) untuk
+    deteksi perubahan. Dianalisis di latar belakang; cek status di /uploads/{id}."""
     if asset_id:
         try:
             mission.safe_id(asset_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
-    job_id, src = uploads.create(file.filename or "video.mp4", asset_id, use_vlm, lang)
-    limit, size = uploads.max_bytes(), 0
+    has_pre = pre_file is not None and bool(pre_file.filename)
+    job_id, src, pre_src = uploads.create(file.filename or "video.mp4", asset_id, use_vlm, lang,
+                                          pre_file.filename if has_pre else None)
+    limit = uploads.max_bytes()
     try:
-        with open(src, "wb") as f:
-            while chunk := await file.read(1 << 20):
-                size += len(chunk)
-                if size > limit:
-                    raise HTTPException(status_code=413, detail=f"File terlalu besar (maks {limit // (1024 * 1024)} MB)")
-                f.write(chunk)
+        size = await _save(file, src, limit)
+        if has_pre and await _save(pre_file, pre_src, limit) == 0:
+            pre_src.unlink(missing_ok=True)
+            pre_src = None
     except HTTPException:
-        src.unlink(missing_ok=True)
         uploads.discard(job_id)
         raise
     if size == 0:
         uploads.discard(job_id)
         raise HTTPException(status_code=422, detail="File kosong")
-    uploads.start(job_id, src)
+    uploads.start(job_id, src, pre_src)
     return uploads.status(job_id)
 
 
@@ -117,7 +129,7 @@ def upload_status(job_id: str) -> dict:
 
 
 @router.get("/uploads/{job_id}/frames/{i}.jpg", response_class=Response)
-def upload_frame(job_id: str, i: int, kind: Annotated[str, Query(pattern="^(ai|raw)$")] = "ai") -> Response:
+def upload_frame(job_id: str, i: int, kind: Annotated[str, Query(pattern="^(ai|raw|pre)$")] = "ai") -> Response:
     try:
         f = uploads.frame_file(job_id, i, kind)
     except ValueError as e:
