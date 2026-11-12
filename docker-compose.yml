@@ -1,0 +1,27 @@
+# GLASS dashboard: web (Next.js) + api (FastAPI). Hanya "web" yang membuka port ke luar.
+name: glass
+
+services:
+  api:
+    build: ./api
+    image: glass-api:0.1.0
+    restart: unless-stopped
+    environment:
+      # Kosong = skenario contoh. Isi /data/<file>.geojson untuk memakai data aset asli.
+      GLASS_ASSETS_FILE: ${GLASS_ASSETS_FILE:-}
+    volumes:
+      - ./data:/data:ro
+    expose:
+      - "8000"
+
+  web:
+    build: ./web
+    image: glass-web:0.1.0
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "${GLASS_BIND:-0.0.0.0}:${GLASS_PORT:-3070}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
