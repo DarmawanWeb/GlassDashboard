@@ -312,7 +312,7 @@ export const id = {
       vol: (p: string) => `LiDAR: tinggi permukaan turun rata-rata ${p} dari tinggi bangunan (runtuh atau melesak).`,
       wet: (p: string) => `Termal: ${p} tanah di sekitar bangunan lebih dingin dari 29,8 °C dan bukan tumbuhan (lumpur atau genangan).`,
       area: (n: number, severe: number) => `Di sekitarnya ${n} bangunan lain terdeteksi, ${severe} rusak berat atau hancur.`,
-      confidence: (p: string) => `Keyakinan AI ${p}, makin rendah kalau persentasenya dekat batas kelas.`,
+      confidence: (p: string) => `Keyakinan AI ${p}: makin tinggi kalau kamera dan LiDAR sepakat.`,
     },
   },
 
