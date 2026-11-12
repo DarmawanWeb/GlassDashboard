@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Asset, Certificate, VerifyResult } from "@/lib/types";
+import type { Asset, Certificate, VerifyResult, ZoneId } from "@/lib/types";
 import { api } from "@/lib/api";
-import { ZONE } from "@/lib/palette";
-import { dec, rupiah, rupiahFull } from "@/lib/format";
+import { errorText, useI18n } from "@/lib/i18n";
 import { Icon } from "./ui/controls";
 
 function Hash({ value, compare }: { value: string; compare?: string }) {
@@ -19,19 +18,21 @@ function Hash({ value, compare }: { value: string; compare?: string }) {
 
 /** Sertifikat Kerugian Digital + uji keaslian (ubah satu angka, sidik jari berubah). */
 export default function CertificatePanel({ asset, onPickLargest }: { asset: Asset | null; onPickLargest: () => void }) {
+  const { t, f, lang } = useI18n();
   const [cert, setCert] = useState<Certificate | null>(null);
   const [claimInput, setClaimInput] = useState("");
   const [check, setCheck] = useState<VerifyResult | null>(null);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err, setErr] = useState<unknown>(null);
 
-  useEffect(() => { setCert(null); setCheck(null); setErr(null); }, [asset?.id, asset?.claim, asset?.advance]);
+  // Sertifikat diterbitkan ulang kalau aset, angkanya, atau bahasanya berubah.
+  useEffect(() => { setCert(null); setCheck(null); setErr(null); }, [asset?.id, asset?.claim, asset?.advance, lang]);
 
   if (!asset) {
     return (
       <div className="note small" style={{ display: "grid", gap: 8 }}>
-        <span>Klik satu aset di peta untuk menerbitkan sertifikat kerugiannya.</span>
-        <button type="button" className="btn" style={{ justifySelf: "start" }} onClick={onPickLargest}>Pilih aset dengan klaim terbesar</button>
+        <span>{t.cert.pick}</span>
+        <button type="button" className="btn" style={{ justifySelf: "start" }} onClick={onPickLargest}>{t.cert.pickLargest}</button>
       </div>
     );
   }
@@ -39,11 +40,11 @@ export default function CertificatePanel({ asset, onPickLargest }: { asset: Asse
   const issue = async () => {
     setBusy(true); setErr(null);
     try {
-      const c = await api.issue(asset);
+      const c = await api.issue(asset, lang);
       setCert(c);
       setClaimInput(String(c.estimated_claim_idr));
       setCheck(null);
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { setErr(e); } finally { setBusy(false); }
   };
 
   const verify = async () => {
@@ -52,69 +53,69 @@ export default function CertificatePanel({ asset, onPickLargest }: { asset: Asse
     try {
       const n = Number(claimInput.replace(/[^\d]/g, ""));
       setCheck(await api.verify({ ...cert, estimated_claim_idr: Number.isFinite(n) ? n : 0 }));
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+    } catch (e) { setErr(e); } finally { setBusy(false); }
   };
 
   if (!cert) {
     return (
       <div style={{ display: "grid", gap: 10 }}>
-        <div className="small muted">Aset terpilih: <b style={{ color: "var(--ink)" }}>{asset.id}</b>, estimasi klaim {rupiah(asset.claim)}.</div>
+        <div className="small muted">{t.cert.selected(asset.id, f.rupiah(asset.claim))}</div>
         <button type="button" className="btn btn-primary" style={{ justifySelf: "start" }} onClick={issue} disabled={busy}>
-          <Icon name="shield" /> Terbitkan sertifikat {asset.id}
+          <Icon name="shield" /> {t.cert.issue(asset.id)}
         </button>
-        {err && <div className="note note-bad small">{err}</div>}
+        {err !== null && <div className="note note-bad small">{errorText(t, err)}</div>}
       </div>
     );
   }
 
+  const zone = t.zone[cert.zone as ZoneId]?.label;
   const tampered = Number(claimInput.replace(/[^\d]/g, "")) !== cert.estimated_claim_idr;
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div className="cert">
-        <div className="cert-title">Sertifikat Kerugian Digital</div>
+        <div className="cert-title">{t.cert.title}</div>
         <div className="tiny">{cert.certificate_id}</div>
         <dl className="cert-grid">
-          <dt>Aset</dt><dd>{cert.asset_id}, {cert.asset_type}</dd>
-          <dt>Kejadian</dt><dd>{cert.event}</dd>
-          <dt>Skor SDSI</dt><dd>{dec(cert.sdsi, 3)}, zona {ZONE[cert.zone as keyof typeof ZONE]?.label.toLowerCase() ?? cert.zone}</dd>
-          <dt>Nilai pertanggungan</dt><dd>{rupiahFull(cert.sum_insured_idr)}</dd>
-          <dt>Estimasi klaim</dt><dd>{rupiahFull(cert.estimated_claim_idr)}</dd>
-          <dt>Uang muka</dt><dd>{rupiahFull(cert.advance_idr)}</dd>
-          <dt>Sisa pembayaran</dt><dd>{rupiahFull(cert.topup_idr)}</dd>
-          <dt>Terbit</dt><dd>{cert.issued_utc.replace("T", " ").replace("Z", " UTC")}</dd>
+          <dt>{t.cert.asset}</dt><dd>{cert.asset_id}, {cert.asset_type}</dd>
+          <dt>{t.cert.event}</dt><dd>{cert.event}</dd>
+          <dt>{t.cert.score}</dt><dd>{f.dec(cert.sdsi, 3)}, {zone ? t.zoneName(zone) : cert.zone}</dd>
+          <dt>{t.cert.sumInsured}</dt><dd>{f.rupiahFull(cert.sum_insured_idr)}</dd>
+          <dt>{t.cert.claim}</dt><dd>{f.rupiahFull(cert.estimated_claim_idr)}</dd>
+          <dt>{t.cert.advance}</dt><dd>{f.rupiahFull(cert.advance_idr)}</dd>
+          <dt>{t.cert.topup}</dt><dd>{f.rupiahFull(cert.topup_idr)}</dd>
+          <dt>{t.cert.sources}</dt><dd>{cert.data_sources.slice(0, 3).join(", ")}</dd>
+          <dt>{t.cert.issued}</dt><dd>{f.utc(cert.issued_utc)}</dd>
         </dl>
         <div style={{ marginTop: 10 }}>
-          <div className="tiny">Sidik jari SHA-256</div>
+          <div className="tiny">{t.cert.fingerprint}</div>
           <Hash value={cert.sha256} />
         </div>
       </div>
 
-      <h3 className="section-title" style={{ margin: "6px 0 0" }}>Uji keaslian</h3>
-      <div className="small muted">Ubah angka klaim, lalu cek. Satu digit saja berbeda, sidik jarinya berubah total.</div>
+      <h3 className="section-title" style={{ margin: "6px 0 0" }}>{t.cert.verifyTitle}</h3>
+      <div className="small muted">{t.cert.verifyLead}</div>
       <div style={{ display: "flex", gap: 8 }}>
-        <input className="cert-input" inputMode="numeric" aria-label="Estimasi klaim di sertifikat (rupiah)" value={claimInput}
+        <input className="cert-input" inputMode="numeric" aria-label={t.cert.inputLabel} value={claimInput}
           onChange={(e) => { setClaimInput(e.target.value); setCheck(null); }} />
-        <button type="button" className="btn btn-primary" onClick={verify} disabled={busy}>Cek sidik jari</button>
+        <button type="button" className="btn btn-primary" onClick={verify} disabled={busy}>{t.cert.check}</button>
       </div>
       {tampered && !check && (
         <button type="button" className="btn btn-ghost" style={{ justifySelf: "start", height: 30 }} onClick={() => { setClaimInput(String(cert.estimated_claim_idr)); setCheck(null); }}>
-          Kembalikan angka asli
+          {t.cert.restore}
         </button>
       )}
       {check && (check.valid ? (
-        <div className="note note-good small" role="status">
-          <b>Asli.</b> Isi sertifikat cocok dengan sidik jarinya.
-        </div>
+        <div className="note note-good small" role="status">{t.cert.valid}</div>
       ) : (
         <div className="note note-bad small" role="status" style={{ display: "grid", gap: 6 }}>
-          <span><b>Tidak cocok.</b> Isi sertifikat sudah diubah, jadi sidik jarinya berbeda.</span>
-          <span className="tiny">Sidik jari tercatat</span>
+          <span>{t.cert.invalid}</span>
+          <span className="tiny">{t.cert.recorded}</span>
           <Hash value={check.given_sha256} />
-          <span className="tiny">Sidik jari dari isi sekarang (karakter berbeda ditandai)</span>
+          <span className="tiny">{t.cert.current}</span>
           <Hash value={check.expected_sha256} compare={check.given_sha256} />
         </div>
       ))}
-      {err && <div className="note note-bad small">{err}</div>}
+      {err !== null && <div className="note note-bad small">{errorText(t, err)}</div>}
     </div>
   );
 }

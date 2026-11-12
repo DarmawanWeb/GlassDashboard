@@ -1,0 +1,3 @@
+/** Skrip kecil di <head>: pasang tema & bahasa sebelum halaman tergambar (tanpa kedip).
+ *  Urutan: ?theme= / ?lang= di URL, pilihan tersimpan, lalu tema sistem dan bahasa Indonesia. */
+export const BOOT_SCRIPT = `(function(){try{var d=document.documentElement,q=new URLSearchParams(location.search),t=q.get('theme');if(t!=='light'&&t!=='dark'){try{t=localStorage.getItem('glass-theme')}catch(e){}}if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}d.dataset.theme=t;var l=q.get('lang');if(l!=='id'&&l!=='en'){try{l=localStorage.getItem('glass-lang')}catch(e){}}d.lang=l==='en'?'en':'id'}catch(e){}})();`;

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
@@ -64,14 +64,14 @@ def view(key: str, asset_id: str, kind: str) -> Response:
 
 
 @router.post("/ask")
-def ask(req: ScanRequest) -> dict:
+def ask(req: ScanRequest, lang: Annotated[Literal["id", "en"], Query()] = "id") -> dict:
     """Tanya VLM: jelaskan kerusakan di foto drone aset ini dengan kalimat."""
     if not vlm.config()["enabled"]:
         raise HTTPException(status_code=503, detail="VLM belum diaktifkan. Isi GLASS_VLM_PROVIDER di .env.")
     p = _params(req)
     try:
         jpeg = mission.view(p, _asset(p, mission.safe_id(req.asset_id)), "rgb")
-        return vlm.ask(jpeg)
+        return vlm.ask(jpeg, lang)
     except vlm.VlmError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except ValueError as e:
@@ -80,14 +80,15 @@ def ask(req: ScanRequest) -> dict:
 
 @router.post("/uploads")
 async def upload(file: Annotated[UploadFile, File()], asset_id: Annotated[str | None, Form()] = None,
-                 use_vlm: Annotated[bool, Form()] = False) -> dict:
+                 use_vlm: Annotated[bool, Form()] = False,
+                 lang: Annotated[Literal["id", "en"], Form()] = "id") -> dict:
     """Unggah video (atau foto) drone. Dianalisis di latar belakang; cek status di /uploads/{id}."""
     if asset_id:
         try:
             mission.safe_id(asset_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
-    job_id, src = uploads.create(file.filename or "video.mp4", asset_id, use_vlm)
+    job_id, src = uploads.create(file.filename or "video.mp4", asset_id, use_vlm, lang)
     limit, size = uploads.max_bytes(), 0
     try:
         with open(src, "wb") as f:

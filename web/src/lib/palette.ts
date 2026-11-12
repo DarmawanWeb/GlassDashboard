@@ -1,11 +1,13 @@
-import type { AssetType, ZoneId } from "./types";
+import type { AssetType, Sensor, ZoneId } from "./types";
+
+/* Hanya warna & urutan. Semua teks ada di lib/i18n. */
 
 /** Warna zona = palet status (hijau/kuning/oranye/merah), selalu tampil bersama label. */
-export const ZONE: Record<ZoneId, { color: string; label: string; meaning: string; ink: string }> = {
-  hijau: { color: "#0CA30C", label: "Hijau", meaning: "Rusak ringan", ink: "#ffffff" },
-  kuning: { color: "#FAB219", label: "Kuning", meaning: "Rusak sedang", ink: "#13283F" },
-  oranye: { color: "#EC835A", label: "Oranye", meaning: "Rusak berat", ink: "#13283F" },
-  merah: { color: "#D03B3B", label: "Merah", meaning: "Rusak total", ink: "#ffffff" },
+export const ZONE: Record<ZoneId, { color: string; ink: string }> = {
+  hijau: { color: "#0CA30C", ink: "#ffffff" },
+  kuning: { color: "#FAB219", ink: "#13283F" },
+  oranye: { color: "#EC835A", ink: "#13283F" },
+  merah: { color: "#D03B3B", ink: "#ffffff" },
 };
 export const ZONES: ZoneId[] = ["hijau", "kuning", "oranye", "merah"];
 
@@ -15,41 +17,30 @@ export const SERIES = {
   muted: "#8A97A6",
 };
 
-export const TYPE_LABEL: Record<AssetType, string> = {
-  sekolah: "Sekolah",
-  puskesmas: "Puskesmas",
-  kantor: "Kantor pemerintah",
-  jembatan: "Jembatan",
+export const ASSET_TYPES: AssetType[] = ["sekolah", "puskesmas", "kantor", "jembatan"];
+export const SENSORS: Sensor[] = ["d_surf", "d_vol", "d_water"];
+
+/** Ramp peta panas per sensor satelit (terang -> pekat). */
+export const SENSOR_RAMP: Record<Sensor, readonly string[]> = {
+  d_surf: ["#fff7d6", "#fab219", "#d03b3b"],
+  d_vol: ["#e3dcff", "#8f7cf0", "#4b2fc9"],
+  d_water: ["#d6f1ff", "#38a3e8", "#0b4f9c"],
 };
 
-export const SENSOR = {
-  d_surf: { label: "Foto", long: "Foto satelit", note: "Melihat atap runtuh, puing, dan bangunan yang hilang.", ramp: ["#fff7d6", "#fab219", "#d03b3b"] },
-  d_vol: { label: "Radar", long: "Radar Sentinel-1", note: "Melihat perubahan bentuk dan runtuhan. Radar menembus awan.", ramp: ["#e3dcff", "#8f7cf0", "#4b2fc9"] },
-  d_water: { label: "Air", long: "Peta banjir & suhu", note: "Melihat genangan dan lumpur, terutama di sepanjang pantai.", ramp: ["#d6f1ff", "#38a3e8", "#0b4f9c"] },
-} as const;
-
-export const SURF_CLASSES = [
-  { value: 0, label: "Tidak rusak" },
-  { value: 1 / 3, label: "Rusak ringan" },
-  { value: 2 / 3, label: "Rusak berat" },
-  { value: 1, label: "Hancur" },
-];
+/** Nilai D_surf per kelas foto (gaya xBD): tidak rusak, ringan, berat, hancur. */
+export const SURF_VALUES = [0, 1 / 3, 2 / 3, 1];
+export const nearestSurf = (v: number) =>
+  SURF_VALUES.reduce((best, c, i) => (Math.abs(c - v) < Math.abs(SURF_VALUES[best] - v) ? i : best), 0);
 
 /** Kelas kerusakan bangunan (gaya xBD), warnanya mengikuti tingkat keparahan zona. */
 export const DAMAGE_CLASS = [
-  { label: "Tidak rusak", color: "#0CA30C", ink: "#ffffff" },
-  { label: "Rusak ringan", color: "#FAB219", ink: "#13283F" },
-  { label: "Rusak berat", color: "#EC835A", ink: "#13283F" },
-  { label: "Hancur", color: "#D03B3B", ink: "#ffffff" },
+  { color: "#0CA30C", ink: "#ffffff" },
+  { color: "#FAB219", ink: "#13283F" },
+  { color: "#EC835A", ink: "#13283F" },
+  { color: "#D03B3B", ink: "#ffffff" },
 ] as const;
 
-export const SOURCE_LABEL = { satelit: "Satelit", drone: "Drone", video: "Video drone" } as const;
-
 /** Tiga sensor drone sesuai rancangan GLASS. */
-export const DRONE_SENSOR = {
-  rgb: { label: "Kamera RGB", spec: "< 2 cm/piksel", reads: "kerusakan atap & puing" },
-  lidar: { label: "LiDAR", spec: "> 100 titik/m²", reads: "runtuhan & perubahan bentuk" },
-  thermal: { label: "Termal LWIR", spec: "< 50 mK", reads: "genangan & dinding basah" },
-} as const;
+export const DRONE_SENSORS = ["rgb", "lidar", "thermal"] as const;
 
 export const DRONE_ACCENT = "#7cc4ff";

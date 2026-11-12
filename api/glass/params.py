@@ -6,13 +6,14 @@ from dataclasses import dataclass
 
 MODEL_VERSION = "glass-dashboard-0.2"
 EVENT_NAME = "Gempa & Tsunami Palu M7,5 (28 September 2018)"
+EVENT_NAME_EN = "Palu M7.5 earthquake & tsunami (28 September 2018)"
 
 # Bobot SDSI per jenis aset: (w_vol radar, w_surf foto, w_water air), jumlah = 1
 ASSET_TYPES: dict[str, dict] = {
-    "sekolah":   {"label": "Sekolah",           "weights": (0.30, 0.45, 0.25), "si_range": (2e9, 6e9),   "share": 0.50},
-    "puskesmas": {"label": "Puskesmas",         "weights": (0.30, 0.45, 0.25), "si_range": (3e9, 8e9),   "share": 0.17},
-    "kantor":    {"label": "Kantor pemerintah", "weights": (0.35, 0.45, 0.20), "si_range": (5e9, 20e9),  "share": 0.25},
-    "jembatan":  {"label": "Jembatan",          "weights": (0.50, 0.30, 0.20), "si_range": (10e9, 40e9), "share": 0.08},
+    "sekolah":   {"label": "Sekolah",           "label_en": "School",            "weights": (0.30, 0.45, 0.25), "si_range": (2e9, 6e9),   "share": 0.50},
+    "puskesmas": {"label": "Puskesmas",         "label_en": "Health center",     "weights": (0.30, 0.45, 0.25), "si_range": (3e9, 8e9),   "share": 0.17},
+    "kantor":    {"label": "Kantor pemerintah", "label_en": "Government office", "weights": (0.35, 0.45, 0.20), "si_range": (5e9, 20e9),  "share": 0.25},
+    "jembatan":  {"label": "Jembatan",          "label_en": "Bridge",            "weights": (0.50, 0.30, 0.20), "si_range": (10e9, 40e9), "share": 0.08},
 }
 
 # (batas atas SDSI, id, label, arti) — 4 zona GLASS

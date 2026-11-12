@@ -6,25 +6,24 @@ import type {
   StyleSpecification,
 } from "maplibre-gl";
 import type { Basemap, Meta, Mission, ScanResult, Scenario, Sensor, StepId } from "@/lib/types";
-import { DAMAGE_CLASS, DRONE_ACCENT, SENSOR, SERIES } from "@/lib/palette";
+import type { Theme } from "@/lib/theme";
+import { DAMAGE_CLASS, DRONE_ACCENT, SENSOR_RAMP, SERIES } from "@/lib/palette";
 
 /* ---------- peta dasar ---------- */
-export const BASEMAPS: Record<Exclude<Basemap, "offline">, { label: string; layer: string }> = {
-  s2: { label: "Sentinel-2 2018", layer: "base-s2" },
-  esri: { label: "Resolusi tinggi", layer: "base-esri" },
-  carto: { label: "Peta jalan", layer: "base-carto" },
+export const BASEMAPS: Record<Exclude<Basemap, "offline">, { layer: string }> = {
+  s2: { layer: "base-s2" },
+  esri: { layer: "base-esri" },
+  carto: { layer: "base-carto" },
 };
 export const BASEMAP_ORDER: Basemap[] = ["s2", "esri", "carto", "offline"];
-export const BASEMAP_LABEL: Record<Basemap, string> = {
-  s2: "Sentinel-2 2018",
-  esri: "Resolusi tinggi",
-  carto: "Peta jalan",
-  offline: "Offline",
-};
+
+/** Peta jalan CARTO: versi terang untuk tema terang, versi gelap untuk tema gelap. */
+export const cartoTiles = (theme: Theme) =>
+  ["a", "b", "c", "d"].map((s) => `https://${s}.basemaps.cartocdn.com/rastertiles/${theme === "dark" ? "dark_all" : "voyager"}/{z}/{x}/{y}@2x.png`);
 
 export const CITY_BOUNDS: [[number, number], [number, number]] = [[119.806, -0.962], [119.928, -0.802]];
 
-export function baseStyle(): StyleSpecification {
+export function baseStyle(theme: Theme): StyleSpecification {
   const raster = { "raster-opacity": 1, "raster-saturation": -0.25, "raster-brightness-max": 0.86, "raster-contrast": 0.05 };
   return {
     version: 8,
@@ -35,18 +34,18 @@ export function baseStyle(): StyleSpecification {
         tileSize: 256,
         maxzoom: 14,
         attribution:
-          '<a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless 2018</a> oleh EOX IT Services GmbH (data Copernicus Sentinel 2018)',
+          '<a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless 2018</a> © EOX IT Services GmbH (Copernicus Sentinel 2018)',
       },
       esri: {
         type: "raster",
         tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
         tileSize: 256,
         maxzoom: 18,
-        attribution: "Citra: Esri, Maxar, Earthstar Geographics",
+        attribution: "© Esri, Maxar, Earthstar Geographics",
       },
       carto: {
         type: "raster",
-        tiles: ["a", "b", "c", "d"].map((s) => `https://${s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png`),
+        tiles: cartoTiles(theme),
         tileSize: 256,
         maxzoom: 19,
         attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> © CARTO',
@@ -54,7 +53,7 @@ export function baseStyle(): StyleSpecification {
       land: {
         type: "geojson",
         data: "/geo/palu_land.geojson",
-        attribution: 'Garis pantai: <a href="https://www.geoboundaries.org" target="_blank" rel="noopener">geoBoundaries</a> (CC BY 4.0)',
+        attribution: '<a href="https://www.geoboundaries.org" target="_blank" rel="noopener">geoBoundaries</a> (CC BY 4.0)',
       },
     },
     layers: [
@@ -124,7 +123,7 @@ export function overlayLayers(): LayerSpecification[] {
       "heatmap-weight": ["get", sensor],
       "heatmap-radius": heatRadius,
       "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 15, 2.2],
-      "heatmap-color": heatColor(SENSOR[sensor].ramp),
+      "heatmap-color": heatColor(SENSOR_RAMP[sensor]),
       "heatmap-opacity": 0,
     },
   });

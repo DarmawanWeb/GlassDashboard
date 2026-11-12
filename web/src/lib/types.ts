@@ -4,6 +4,7 @@ export type StepId = "lihat" | "pindai" | "nilai" | "hitung" | "bayar";
 export type Source = "satelit" | "drone" | "video";
 export type Sensor = "d_surf" | "d_vol" | "d_water";
 export type Basemap = "s2" | "esri" | "carto" | "offline";
+export type Lang = "id" | "en";
 
 export interface Term {
   key: Sensor;
@@ -254,9 +255,11 @@ export interface UploadJob {
   use_vlm: boolean;
   frames: UploadFrame[];
   error: string | null;
+  error_code: string | null;
   result: {
-    damage: number; cls: number; label: string; method: string; cv_damage: number; vlm_damage: number | null;
-    water: number; frames_used: number; frames: number; summary: string | null; vlm_note: string | null; d_surf: number;
+    damage: number; cls: number; label: string; method: "cv" | "vlm+cv"; cv_damage: number; vlm_damage: number | null;
+    water: number; frames_used: number; frames: number; summary: string | null; vlm_note: string | null;
+    vlm_status: "off" | "ok" | "disabled" | "error"; d_surf: number;
   } | null;
 }
 

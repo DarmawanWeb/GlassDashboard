@@ -9,7 +9,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from .params import ASSET_TYPES, EVENT_NAME, MODEL_VERSION
+from .params import ASSET_TYPES, EVENT_NAME, EVENT_NAME_EN, MODEL_VERSION
 
 FIELDS = ("certificate_id", "asset_id", "asset_type", "location", "event", "sdsi", "zone", "observed",
           "sum_insured_idr", "estimated_claim_idr", "advance_idr", "topup_idr", "data_sources",
@@ -19,6 +19,11 @@ DATA_SOURCES = {
     "satelit": ["Foto satelit (Maxar / xBD)", "Radar Sentinel-1", "Peta banjir Sentinel-1 (GFM)", "USGS ShakeMap"],
     "drone": ["Drone: kamera RGB", "Drone: LiDAR", "Drone: kamera termal LWIR", "USGS ShakeMap"],
     "video": ["Video drone (unggahan)", "Radar Sentinel-1", "Peta banjir Sentinel-1 (GFM)", "USGS ShakeMap"],
+}
+DATA_SOURCES_EN = {
+    "satelit": ["Satellite imagery (Maxar / xBD)", "Sentinel-1 radar", "Sentinel-1 flood map (GFM)", "USGS ShakeMap"],
+    "drone": ["Drone: RGB camera", "Drone: LiDAR", "Drone: LWIR thermal camera", "USGS ShakeMap"],
+    "video": ["Drone video (upload)", "Sentinel-1 radar", "Sentinel-1 flood map (GFM)", "USGS ShakeMap"],
 }
 
 
@@ -31,14 +36,16 @@ def fingerprint(payload: dict) -> str:
     return hashlib.sha256(canonical(payload).encode("utf-8")).hexdigest()
 
 
-def issue(asset: dict) -> dict:
+def issue(asset: dict, lang: str = "id") -> dict:
+    en = lang == "en"
+    sources = DATA_SOURCES_EN if en else DATA_SOURCES
     now = datetime.now(timezone.utc).replace(microsecond=0)
     cert = {
         "certificate_id": f"GLASS-PLU-{asset['id']}-{now:%Y%m%d%H%M%S}",
         "asset_id": asset["id"],
-        "asset_type": ASSET_TYPES[asset["type"]]["label"],
+        "asset_type": ASSET_TYPES[asset["type"]]["label_en" if en else "label"],
         "location": {"lat": asset["lat"], "lon": asset["lon"]},
-        "event": EVENT_NAME,
+        "event": EVENT_NAME_EN if en else EVENT_NAME,
         "sdsi": round(float(asset["sdsi"]), 3),
         "zone": asset["zone"],
         "observed": bool(asset["observed"]),
@@ -46,7 +53,7 @@ def issue(asset: dict) -> dict:
         "estimated_claim_idr": int(round(asset["claim"])),
         "advance_idr": int(round(asset["advance"])),
         "topup_idr": int(round(asset["topup"])),
-        "data_sources": DATA_SOURCES.get(asset.get("source", "satelit"), DATA_SOURCES["satelit"]),
+        "data_sources": sources.get(asset.get("source", "satelit"), sources["satelit"]),
         "model_version": MODEL_VERSION,
         "issued_utc": now.isoformat().replace("+00:00", "Z"),
     }

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, HTTPException, Query
 
 from glass import certificate, pipeline
 from glass.params import PolicyParams, ScenarioParams
@@ -38,9 +40,9 @@ def sdsi_calculator(req: CalculatorRequest) -> dict:
 
 
 @router.post("/certificates")
-def issue_certificate(asset: AssetForCertificate) -> dict:
-    """Terbitkan Digital Loss Certificate dengan sidik jari SHA-256."""
-    return certificate.issue(asset.model_dump())
+def issue_certificate(asset: AssetForCertificate, lang: Annotated[Literal["id", "en"], Query()] = "id") -> dict:
+    """Terbitkan Digital Loss Certificate dengan sidik jari SHA-256 (isi teks dalam bahasa `lang`)."""
+    return certificate.issue(asset.model_dump(), lang)
 
 
 @router.post("/certificates/verify")
