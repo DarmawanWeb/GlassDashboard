@@ -58,7 +58,10 @@ export const en: Dict = {
     lidar: { label: "LiDAR", spec: "> 100 points/m²", reads: "collapse & deformation" },
     thermal: { label: "LWIR thermal", spec: "< 50 mK", reads: "standing water & wet walls" },
   },
-  method: { cv: "computer vision", "vlm+cv": "VLM + computer vision" },
+  method: {
+    cv: "computer vision", change: "before-after change detection",
+    "vlm+cv": "VLM + computer vision", "vlm+change": "VLM + change detection",
+  },
   of: (a: string | number, b: string | number) => `${a} of ${b}`,
 
   lihat: {
@@ -302,15 +305,27 @@ export const en: Dict = {
     asking: "Asking…",
     noSummary: "(no summary)",
     vlmEstimate: (cls: string, p: number, s: string) => `VLM estimate: ${cls}, ${p}% damaged, ${s} s.`,
+    why: "Why did the AI decide this?",
+    reasons: {
+      roof: (p: string) => `RGB camera: ${p} of the building footprint changed color or texture against the digital twin (missing roof, debris).`,
+      vol: (p: string) => `LiDAR: the surface dropped by ${p} of the building height on average (collapse or sagging).`,
+      wet: (p: string) => `Thermal: ${p} of the ground around the building is colder than 29.8 °C and not vegetation (mud or standing water).`,
+      area: (n: number, severe: number) => `${n} other buildings were detected nearby, ${severe} with major damage or destroyed.`,
+      confidence: (p: string) => `AI confidence ${p}; it drops when the percentage sits close to a class boundary.`,
+    },
   },
 
   upload: {
     title: "Try your own drone video",
-    lead: "Upload a video or an aerial photo. The AI checks about one frame per second, marks debris (red) and standing water (blue), and the result can be applied to one asset.",
-    sample: "Download a simulated sample video",
+    lead: "Upload a video or an aerial photo. The AI checks about one frame per second, marks debris (red) and standing water (blue), outlines each building in its damage class, and the result can be applied to one asset.",
+    samples: "Simulated sample videos",
+    sampleAfter: "after",
+    sampleBefore: "before the disaster",
+    preFile: "Before (optional)",
+    preHint: "A video or photo of the same area before the disaster. If provided, the AI aligns every frame with its before frame and measures how much of each building changed, just like the drone mission.",
     forAsset: "For asset",
     noAsset: "No asset (analysis only)",
-    file: "File",
+    file: "After",
     vlmAsk: "Ask the VLM to describe the frames",
     vlmOff: "(not enabled on the server)",
     vlmTitleOff: "Set GLASS_VLM_PROVIDER on the server",
@@ -327,8 +342,13 @@ export const en: Dict = {
     vlmDisabled: "The VLM is not enabled on the server, so only computer vision was used.",
     frameAlt: (i: number) => `Frame ${i} of the video`,
     frameCaption: (t: string, d: string, w: string) => `Second ${t}: ${d} damaged, water ${w}`,
-    showRaw: "Show the original",
-    showAi: "Show the AI view",
+    views: { ai: "AI view", raw: "After", pre: "Before" },
+    viewGroup: "Frame view",
+    buildings: (n: number, by: number[]) =>
+      `${n} buildings${by[3] ? `, ${by[3]} destroyed` : ""}${by[2] ? `, ${by[2]} with major damage` : ""}${by[1] ? `, ${by[1]} with minor damage` : ""}.`,
+    alignedNote: (k: number, n: number) => `Aligned with before frame ${k} (${n} matching points).`,
+    notAligned: "Couldn't be aligned with the before video, so it was assessed on its own.",
+    alignedCount: (a: number, n: number) => `${a} of ${n} frames were aligned with the before video.`,
     strip: "Frames from the video",
     applied: (id: string) => `Applied to ${id}. See the changes in the Score and Calculate steps.`,
     apply: (id: string) => `Use this result for ${id}`,
@@ -341,6 +361,7 @@ export const en: Dict = {
       failed: "The analysis failed.",
     },
     network: "Upload failed. Check the connection.",
+    timeline: "Damage per second",
   },
 
   map: {
@@ -423,6 +444,8 @@ export const en: Dict = {
     lossAtLeast: "loss ≥",
     pmlNote: (rp: string) => `Under the model's assumptions, a loss as large as this scenario happens ${rp}.`,
     sdsiScale: (v: string) => `SDSI score ${v} on the zone scale`,
+    damageTimeline: "Damage per video frame",
+    second: (s: string) => `second ${s}`,
   },
 
 

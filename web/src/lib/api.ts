@@ -61,10 +61,11 @@ export const api = {
   uploadStatus: (jobId: string) => call<UploadJob>(`drone/uploads/${jobId}`),
 
   /** Unggah video dengan progres (fetch belum bisa melaporkan progres unggah). */
-  upload: (file: File, assetId: string | null, useVlm: boolean, lang: Lang, onProgress: (f: number) => void) =>
+  upload: (file: File, preFile: File | null, assetId: string | null, useVlm: boolean, lang: Lang, onProgress: (f: number) => void) =>
     new Promise<UploadJob>((resolve, reject) => {
       const fd = new FormData();
       fd.append("file", file);
+      if (preFile) fd.append("pre_file", preFile);
       if (assetId) fd.append("asset_id", assetId);
       fd.append("use_vlm", useVlm ? "true" : "false");
       fd.append("lang", lang);
@@ -84,4 +85,5 @@ export const api = {
 
 export const viewUrl = (key: string, id: string, kind: ViewKind) =>
   `/api/drone/view/${encodeURIComponent(key)}/${encodeURIComponent(id)}/${kind}.jpg`;
-export const frameUrl = (jobId: string, i: number, kind: "ai" | "raw") => `/api/drone/uploads/${jobId}/frames/${i}.jpg?kind=${kind}`;
+export type FrameKind = "ai" | "raw" | "pre";
+export const frameUrl = (jobId: string, i: number, kind: FrameKind) => `/api/drone/uploads/${jobId}/frames/${i}.jpg?kind=${kind}`;

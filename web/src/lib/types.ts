@@ -233,6 +233,12 @@ export interface VlmAnswer {
 
 export interface UploadFrame {
   i: number;
+  aligned: boolean;          // disejajarkan dengan gambar sebelum bencana
+  pre_index: number | null;
+  inliers: number;
+  match: number | null;
+  buildings: number;
+  by_class: [number, number, number, number];
   t: number;
   w: number;
   h: number;
@@ -251,14 +257,16 @@ export interface UploadJob {
   status: "uploading" | "running" | "done" | "error";
   progress: number;
   filename: string;
+  pre_filename: string | null;
   asset_id: string | null;
   use_vlm: boolean;
   frames: UploadFrame[];
   error: string | null;
   error_code: string | null;
   result: {
-    damage: number; cls: number; label: string; method: "cv" | "vlm+cv"; cv_damage: number; vlm_damage: number | null;
-    water: number; frames_used: number; frames: number; summary: string | null; vlm_note: string | null;
+    damage: number; cls: number; label: string; method: "cv" | "change" | "vlm+cv" | "vlm+change"; cv_damage: number;
+    vlm_damage: number | null; water: number; frames_used: number; frames: number; aligned_frames: number;
+    pre_frames: number; summary: string | null; vlm_note: string | null;
     vlm_status: "off" | "ok" | "disabled" | "error"; d_surf: number;
   } | null;
 }
