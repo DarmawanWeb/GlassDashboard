@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { type GeoJSONSource, type Map as MLMap, type MapMouseEvent } from "maplibre-gl";
-import type { Asset, Basemap, Meta, Policy, Scenario, Sensor, StepId } from "@/lib/types";
+import type { Asset, Basemap, Meta, Mission, Policy, ScanResult, Scenario, Sensor, StepId } from "@/lib/types";
+import type { MissionPlayer, PlayerState, Pose } from "@/lib/mission";
 import { SENSOR, SURF_CLASSES, TYPE_LABEL, ZONE } from "@/lib/palette";
-import { dec, mmi, rupiah } from "@/lib/format";
+import { dec, mmi, pct, rupiah } from "@/lib/format";
 import Graticule from "./Graticule";
 import MapLegend from "./MapLegend";
 import {
   BASEMAP_LABEL, BASEMAP_ORDER, BASEMAPS, CITY_BOUNDS, EMPTY, HIT_LAYERS,
-  applyFilters, applyLens, assetsFC, baseStyle, cloudsFC, faultFC, linksFC, liqFC, overlayLayers, shakeGridFC, shakeLineFC,
+  applyFilters, applyLens, assetsFC, baseStyle, cloudsFC, faultFC, linksFC, liqFC, overlayLayers, routeDoneFC, routeFC,
+  shakeGridFC, shakeLineFC, targetsFC,
 } from "./layers";
 
 export interface GlassMapProps {
@@ -23,6 +25,12 @@ export interface GlassMapProps {
   onSelect: (id: string | null) => void;
   sweepKey: number;
   policy: Policy;
+  mission: Mission | null;
+  scans: Record<string, ScanResult>;
+  player: MissionPlayer | null;
+  playerState: PlayerState | null;
+  follow: boolean;
+  children?: React.ReactNode;
 }
 
 const SOURCE_OF: Record<Basemap, string | null> = { s2: "s2", esri: "esri", carto: "carto", offline: null };
@@ -31,13 +39,17 @@ function surfLabel(v: number) {
   return SURF_CLASSES.reduce((best, c) => (Math.abs(c.value - v) < Math.abs(best.value - v) ? c : best)).label;
 }
 
-function tipLines(a: Asset, step: StepId, sensor: Sensor, policy: Policy): string[] {
+function tipLines(a: Asset, step: StepId, sensor: Sensor, policy: Policy, scan?: ScanResult): string[] {
   switch (step) {
     case "lihat":
       if (sensor === "d_surf") return [a.observed ? `Foto: ${surfLabel(a.d_surf).toLowerCase()}` : "Foto tertutup awan"];
       return [`${SENSOR[sensor].label}: ${dec(a[sensor], 2)}`];
+    case "pindai":
+      if (scan) return [`Drone: ${scan.estimate.label.toLowerCase()}`, `Atap rusak ${pct(scan.estimate.roof)}`];
+      return [a.source === "satelit" && !(a.sat?.observed ?? a.observed) ? "Foto satelit tertutup awan" : "Belum diperiksa drone"];
     case "nilai":
-      return [`SDSI ${dec(a.sdsi, 2)}, zona ${ZONE[a.zone].label.toLowerCase()}`, ...(a.observed ? [] : ["Nilai foto diperkirakan"])];
+      return [`SDSI ${dec(a.sdsi, 2)}, zona ${ZONE[a.zone].label.toLowerCase()}`,
+        a.source !== "satelit" ? "Nilai dari drone" : a.observed ? "" : "Nilai foto diperkirakan"].filter(Boolean);
     case "hitung":
       return [`Estimasi klaim ${rupiah(a.claim)}`, a.observed ? "Cadangan klaim" : "IBNR (diperkirakan)"];
     case "bayar":
@@ -45,8 +57,21 @@ function tipLines(a: Asset, step: StepId, sensor: Sensor, policy: Policy): strin
   }
 }
 
+/** Ikon quadcopter tampak atas. */
+const DRONE_SVG = `
+<svg viewBox="0 0 48 48" width="40" height="40" aria-hidden="true">
+  <g stroke="#0b1826" stroke-width="2.4" stroke-linecap="round"><path d="M13 13 L35 35 M35 13 L13 35"/></g>
+  <g stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"><path d="M13 13 L35 35 M35 13 L13 35"/></g>
+  <g class="drone-rotors" fill="rgba(214,232,251,.42)" stroke="#ffffff" stroke-width="1.2">
+    <circle cx="11" cy="11" r="7.5"/><circle cx="37" cy="11" r="7.5"/><circle cx="11" cy="37" r="7.5"/><circle cx="37" cy="37" r="7.5"/>
+  </g>
+  <rect x="17.5" y="16" width="13" height="16" rx="4" fill="#ffffff" stroke="#0b1826" stroke-width="1.6"/>
+  <circle cx="24" cy="27" r="2.6" fill="#0b1826"/>
+  <path d="M24 9 l3.5 5 h-7z" fill="#7cc4ff" stroke="#0b1826" stroke-width="1"/>
+</svg>`;
+
 export default function GlassMap(p: GlassMapProps) {
-  const { meta, scenario, step, sensor, basemap, onBasemap, selectedId, onSelect, sweepKey, policy } = p;
+  const { meta, scenario, step, sensor, basemap, onBasemap, selectedId, onSelect, sweepKey, policy, mission, scans, player, playerState, follow } = p;
   const containerRef = useRef<HTMLDivElement>(null);
   const sweepRef = useRef<HTMLDivElement>(null);
   const sweepLabelRef = useRef<HTMLDivElement>(null);
@@ -64,6 +89,9 @@ export default function GlassMap(p: GlassMapProps) {
 
   const labels = useRef<{ el: HTMLElement; marker: maplibregl.Marker; show: StepId[] }[]>([]);
   const selMarker = useRef<maplibregl.Marker | null>(null);
+  const droneMarker = useRef<{ marker: maplibregl.Marker; body: HTMLElement; fp: HTMLElement } | null>(null);
+  const baseMarker = useRef<maplibregl.Marker | null>(null);
+  const lastPose = useRef<Pose | null>(null);
 
   /* 1) buat peta sekali */
   useEffect(() => {
@@ -111,7 +139,7 @@ export default function GlassMap(p: GlassMapProps) {
     });
 
     m.on("load", () => {
-      for (const id of ["assets", "links", "clouds", "shakeline"]) m.addSource(id, { type: "geojson", data: EMPTY });
+      for (const id of ["assets", "links", "clouds", "shakeline", "route", "routeDone", "targets"]) m.addSource(id, { type: "geojson", data: EMPTY });
       m.addSource("fault", { type: "geojson", data: faultFC(meta) });
       m.addSource("liq", { type: "geojson", data: liqFC(meta) });
       m.addSource("shake", { type: "geojson", data: shakeGridFC(meta) });
@@ -162,6 +190,8 @@ export default function GlassMap(p: GlassMapProps) {
     return () => {
       labels.current = [];
       selMarker.current = null;
+      droneMarker.current = null;
+      baseMarker.current = null;
       m.remove();
       setMap(null);
       setReady(false);
@@ -261,6 +291,94 @@ export default function GlassMap(p: GlassMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sweepKey, ready, map]);
 
+  /* 7) misi drone: rute, target, posko */
+  const currentId = playerState && (playerState.phase === "scan" || playerState.phase === "transit") && mission
+    ? mission.targets[playerState.idx]?.id ?? null : null;
+  useEffect(() => {
+    if (!ready || !map) return;
+    (map.getSource("route") as GeoJSONSource).setData(routeFC(mission));
+    baseMarker.current?.remove();
+    baseMarker.current = null;
+    if (mission) {
+      const el = document.createElement("div");
+      el.className = "base-marker";
+      el.innerHTML = `<span class="base-dot">H</span><span class="base-label">${mission.base.name}</span>`;
+      baseMarker.current = new maplibregl.Marker({ element: el, anchor: "left", offset: [-11, 0] })
+        .setLngLat([mission.base.lon, mission.base.lat]).addTo(map);
+    }
+  }, [ready, map, mission]);
+
+  useEffect(() => {
+    if (baseMarker.current) baseMarker.current.getElement().style.display = step === "pindai" ? "" : "none";
+  }, [step, mission]);
+
+  const doneUpto = playerState?.scanned ?? 0;
+  useEffect(() => {
+    if (!ready || !map) return;
+    (map.getSource("targets") as GeoJSONSource).setData(targetsFC(mission, scans, currentId));
+    const home = playerState?.phase === "done" && !playerState.skipping;
+    (map.getSource("routeDone") as GeoJSONSource).setData(routeDoneFC(mission, doneUpto, home));
+  }, [ready, map, mission, scans, currentId, doneUpto, playerState?.phase, playerState?.skipping]);
+
+  /* rute baru: tampilkan seluruhnya */
+  useEffect(() => {
+    if (!ready || !map || !mission || step !== "pindai" || mission.route.length < 2) return;
+    const b = new maplibregl.LngLatBounds();
+    for (const c of mission.route) b.extend(c as [number, number]);
+    map.fitBounds(b, { padding: { top: 60, bottom: 60, left: 60, right: 60 }, duration: 800, maxZoom: 14 });
+  }, [ready, map, mission, step]);
+
+  /* drone: posisi diperbarui tiap frame tanpa render ulang React */
+  useEffect(() => {
+    if (!ready || !map || !player || !mission) return;
+    const el = document.createElement("div");
+    el.className = "drone-marker";
+    el.innerHTML = `<div class="drone-fp"></div><div class="drone-shadow"></div><div class="drone-body">${DRONE_SVG}</div>`;
+    const body = el.querySelector(".drone-body") as HTMLElement;
+    const fp = el.querySelector(".drone-fp") as HTMLElement;
+    const marker = new maplibregl.Marker({ element: el }).setLngLat([mission.base.lon, mission.base.lat]).addTo(map);
+    droneMarker.current = { marker, body, fp };
+    const [fw, fh] = mission.camera.footprint_m;
+    const size = (lat: number, lon: number) => {
+      const k = Math.cos((lat * Math.PI) / 180);
+      const a = map.project([lon, lat]);
+      const b = map.project([lon + fw / (111320 * k), lat]);
+      const w = Math.max(6, Math.abs(b.x - a.x));
+      fp.style.width = `${w}px`;
+      fp.style.height = `${(w * fh) / fw}px`;
+    };
+    const onPose = (q: Pose) => {
+      lastPose.current = q;
+      marker.setLngLat([q.lon, q.lat]);
+      body.style.transform = `rotate(${q.heading}deg)`;
+      el.dataset.phase = q.phase;
+      size(q.lat, q.lon);
+    };
+    const off = player.onPose(onPose);
+    const onZoom = () => { const q = lastPose.current; if (q) size(q.lat, q.lon); };
+    map.on("zoom", onZoom);
+    size(mission.base.lat, mission.base.lon);
+    return () => {
+      off();
+      map.off("zoom", onZoom);
+      marker.remove();
+      droneMarker.current = null;
+    };
+  }, [ready, map, player, mission]);
+
+  useEffect(() => {
+    const d = droneMarker.current;
+    if (d) d.marker.getElement().style.display = step === "pindai" ? "" : "none";
+  }, [step, player]);
+
+  /* ikuti drone: geser peta ke target saat mulai memindai */
+  const phase = playerState?.phase, idx = playerState?.idx ?? -1;
+  useEffect(() => {
+    if (!map || !follow || !mission || phase !== "scan" || step !== "pindai") return;
+    const t = mission.targets[idx];
+    if (t) map.easeTo({ center: [t.lon, t.lat], zoom: Math.max(map.getZoom(), 14.6), duration: 700 });
+  }, [map, follow, mission, phase, idx, step]);
+
   const tipAsset = tip ? assetsById.get(tip.id) : undefined;
 
   return (
@@ -293,22 +411,26 @@ export default function GlassMap(p: GlassMapProps) {
         </div>
       )}
 
-      <div className="map-card title-block">
-        <div className="title-block-place">Kota Palu, Sulawesi Tengah</div>
-        <div className="title-block-event">Gempa M7,5 dan tsunami, 28 September 2018</div>
-        <div>
-          <span className="stamp">Data contoh</span>
-          <span className="stamp-note">lokasi & kerusakan aset disimulasikan</span>
+      {step !== "pindai" && (
+        <div className="map-card title-block">
+          <div className="title-block-place">Kota Palu, Sulawesi Tengah</div>
+          <div className="title-block-event">Gempa M7,5 dan tsunami, 28 September 2018</div>
+          <div>
+            <span className="stamp">Data contoh</span>
+            <span className="stamp-note">lokasi & kerusakan aset disimulasikan</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      <MapLegend step={step} sensor={sensor} scenario={scenario} policy={policy} />
+      <MapLegend step={step} sensor={sensor} scenario={scenario} policy={policy} mission={mission} scans={scans} />
+
+      {p.children}
 
       {tip && tipAsset && (
         <div className="map-tip" style={{ left: tip.x, top: tip.y }}>
           <div className="map-tip-id">{tipAsset.id}</div>
           <div className="map-tip-sub">{TYPE_LABEL[tipAsset.type]}</div>
-          {tipLines(tipAsset, step, sensor, policy).map((l) => <div key={l}>{l}</div>)}
+          {tipLines(tipAsset, step, sensor, policy, scans[tipAsset.id]).map((l) => <div key={l}>{l}</div>)}
         </div>
       )}
     </div>

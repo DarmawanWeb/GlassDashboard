@@ -21,7 +21,7 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
   );
 }
 
-export function RangeField({ label, value, display, min, max, step, onChange, hint, ticks }: {
+export function RangeField({ label, value, display, min, max, step, onChange, hint, ticks, disabled }: {
   label: string;
   value: number;
   display: ReactNode;
@@ -31,6 +31,7 @@ export function RangeField({ label, value, display, min, max, step, onChange, hi
   onChange: (v: number) => void;
   hint?: ReactNode;
   ticks?: string[];
+  disabled?: boolean;
 }) {
   const id = useId();
   return (
@@ -39,7 +40,7 @@ export function RangeField({ label, value, display, min, max, step, onChange, hi
         <label className="field-label" htmlFor={id}>{label}</label>
         <span className="field-value">{display}</span>
       </div>
-      <input id={id} className="range" type="range" min={min} max={max} step={step} value={value}
+      <input id={id} className="range" type="range" min={min} max={max} step={step} value={value} disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))} />
       {ticks && <div className="range-ticks" aria-hidden="true">{ticks.map((t) => <span key={t}>{t}</span>)}</div>}
       {hint && <div className="field-hint">{hint}</div>}

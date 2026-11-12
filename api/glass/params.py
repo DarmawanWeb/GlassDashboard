@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-MODEL_VERSION = "glass-dashboard-0.1"
+MODEL_VERSION = "glass-dashboard-0.2"
 EVENT_NAME = "Gempa & Tsunami Palu M7,5 (28 September 2018)"
 
 # Bobot SDSI per jenis aset: (w_vol radar, w_surf foto, w_water air), jumlah = 1

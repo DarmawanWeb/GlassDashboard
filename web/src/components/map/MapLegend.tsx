@@ -1,7 +1,7 @@
 "use client";
 
-import type { Policy, Scenario, Sensor, StepId } from "@/lib/types";
-import { SENSOR, SERIES, ZONE, ZONES } from "@/lib/palette";
+import type { Mission, Policy, ScanResult, Scenario, Sensor, StepId } from "@/lib/types";
+import { DAMAGE_CLASS, DRONE_ACCENT, SENSOR, SERIES, ZONE, ZONES } from "@/lib/palette";
 import { mmi, rupiah } from "@/lib/format";
 
 function Ramp({ colors, left, right }: { colors: readonly string[]; left: string; right: string }) {
@@ -13,9 +13,12 @@ function Ramp({ colors, left, right }: { colors: readonly string[]; left: string
   );
 }
 
-export default function MapLegend({ step, sensor, scenario, policy }: { step: StepId; sensor: Sensor; scenario: Scenario | null; policy: Policy }) {
+export default function MapLegend({ step, sensor, scenario, policy, mission, scans }: {
+  step: StepId; sensor: Sensor; scenario: Scenario | null; policy: Policy; mission: Mission | null; scans: Record<string, ScanResult>;
+}) {
   if (!scenario) return null;
   const s = scenario.summary;
+  const nScanned = mission ? mission.targets.filter((t) => scans[t.id]).length : 0;
   return (
     <div className="map-card legend" aria-label="Legenda peta">
       {step === "lihat" && (
@@ -27,6 +30,18 @@ export default function MapLegend({ step, sensor, scenario, policy }: { step: St
           )}
           <div className="legend-row"><span className="swatch-line" style={{ borderTopColor: "#13283f" }} />Sesar Palu-Koro (perkiraan)</div>
           <div className="legend-row"><span className="swatch" style={{ background: "rgba(236,131,90,.35)", borderStyle: "dashed", borderColor: "#ec835a" }} />Likuefaksi 2018 (perkiraan)</div>
+        </>
+      )}
+      {step === "pindai" && (
+        <>
+          <div className="legend-title">Misi drone</div>
+          <div className="legend-row"><span className="swatch-line" style={{ borderTopColor: "#13283f" }} />Rute terbang</div>
+          <div className="legend-row"><span className="swatch-line" style={{ borderTop: `3px solid ${DRONE_ACCENT}` }} />Sudah diterbangi</div>
+          <div className="legend-row"><span className="swatch swatch-ring" />Target belum diperiksa<b>{(mission?.targets.length ?? 0) - nScanned}</b></div>
+          <div className="legend-title" style={{ marginTop: 8 }}>Hasil AI drone<b style={{ float: "right", fontWeight: 640 }}>{nScanned}</b></div>
+          {DAMAGE_CLASS.map((c) => (
+            <div className="legend-row" key={c.label}><span className="swatch" style={{ background: c.color }} />{c.label}</div>
+          ))}
         </>
       )}
       {step === "nilai" && (
@@ -43,6 +58,9 @@ export default function MapLegend({ step, sensor, scenario, policy }: { step: St
             );
           })}
           <div className="legend-row tiny">Titik pudar: foto tertutup awan, skornya diperkirakan</div>
+          {s.n_drone + s.n_video > 0 && (
+            <div className="legend-row"><span className="swatch swatch-ring" style={{ borderColor: DRONE_ACCENT }} />Nilai dari drone<b>{s.n_drone + s.n_video}</b></div>
+          )}
           <div className="legend-row tiny">Besar titik: nilai aset</div>
         </>
       )}

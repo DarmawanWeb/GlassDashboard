@@ -1,6 +1,7 @@
 export type AssetType = "sekolah" | "puskesmas" | "kantor" | "jembatan";
 export type ZoneId = "hijau" | "kuning" | "oranye" | "merah";
-export type StepId = "lihat" | "nilai" | "hitung" | "bayar";
+export type StepId = "lihat" | "pindai" | "nilai" | "hitung" | "bayar";
+export type Source = "satelit" | "drone" | "video";
 export type Sensor = "d_surf" | "d_vol" | "d_water";
 export type Basemap = "s2" | "esri" | "carto" | "offline";
 
@@ -33,6 +34,10 @@ export interface Asset {
   advance: number;
   topup: number;
   over: number;
+  source: Source;
+  sat?: { d_vol: number; d_surf: number; d_water: number; observed: boolean };
+  drone?: { roof: number; vol: number; wet: number; cls: number; label: string; confidence: number; key: string };
+  video?: { job_id: string; damage: number; label: string; method: string };
 }
 
 export interface Policy {
@@ -64,6 +69,9 @@ export interface Summary {
   n_over: number;
   missed_severe_count: number;
   missed_severe_claim: number;
+  n_drone: number;
+  n_video: number;
+  n_cloud_cleared: number;
 }
 
 export interface ZoneRow {
@@ -123,6 +131,138 @@ export interface Meta {
   data_mode: "contoh" | "file";
   geo: GeoOverlays;
   shake_grid: [number, number, number][];
+  drone: DroneInfo;
+}
+
+/* ---------- drone ---------- */
+export type ViewKind = "rgb" | "pre" | "lidar" | "thermal" | "ai";
+
+export interface Camera {
+  w: number;
+  h: number;
+  gsd_m: number;
+  footprint_m: [number, number];
+  gsd_target_cm: number;
+  lidar_range: [number, number];
+  thermal_range: [number, number];
+}
+
+export interface DroneInfo {
+  vlm: { enabled: boolean; provider: string; model: string };
+  camera: Camera;
+  flight: { speed_ms: number; altitude_m: number; hover_s: number; battery_min: number; swap_min: number; overhead_min: number };
+  max_upload_mb: number;
+}
+
+export interface MissionTarget {
+  id: string;
+  type: AssetType;
+  lon: number;
+  lat: number;
+  reason: "awan" | "berat";
+  order: number;
+  leg_km: number;
+  cum_km: number;
+  eta_min: number;
+}
+
+export interface Mission {
+  key: string;
+  base: { lon: number; lat: number; name: string };
+  targets: MissionTarget[];
+  route: [number, number][];
+  stats: {
+    n_targets: number; n_cloud: number; n_severe: number; distance_km: number; flight_min: number;
+    total_min: number; batteries: number; speed_ms: number; altitude_m: number; hover_s: number; battery_min: number;
+  };
+  camera: Camera;
+}
+
+export interface Detection {
+  id: string;
+  target: boolean;
+  cls: number;
+  pct: number;
+  bbox: [number, number, number, number];
+  poly: [number, number][];
+}
+
+export interface DroneEstimate {
+  roof: number;
+  vol: number;
+  wet: number;
+  cls: number;
+  label: string;
+  confidence: number;
+  d_surf: number;
+  d_vol: number;
+  d_water: number;
+}
+
+export interface ScanResult {
+  key: string;
+  id: string;
+  type: AssetType;
+  lon: number;
+  lat: number;
+  estimate: DroneEstimate;
+  truth: { roof: number; cls: number; vol: number; wet: number; n_buildings: number };
+  truth_label: string;
+  sdsi_satellite: number;
+  sdsi_drone: number;
+  zone_drone: ZoneId;
+  observed_by_satellite: boolean;
+  area: { n_buildings: number; n_severe: number };
+  detections: Detection[];
+  image: { w: number; h: number };
+  ms: number;
+}
+
+export interface VlmAnswer {
+  cls: number;
+  damage_pct: number;
+  water_pct: number;
+  buildings: number;
+  objects: string[];
+  summary: string;
+  provider: string;
+  model: string;
+  ms: number;
+}
+
+export interface UploadFrame {
+  i: number;
+  t: number;
+  w: number;
+  h: number;
+  damage: number;
+  cls: number;
+  label: string;
+  water: number;
+  vegetation: number;
+  built: number;
+  confidence: number;
+  vlm: VlmAnswer | null;
+}
+
+export interface UploadJob {
+  id: string;
+  status: "uploading" | "running" | "done" | "error";
+  progress: number;
+  filename: string;
+  asset_id: string | null;
+  use_vlm: boolean;
+  frames: UploadFrame[];
+  error: string | null;
+  result: {
+    damage: number; cls: number; label: string; method: string; cv_damage: number; vlm_damage: number | null;
+    water: number; frames_used: number; frames: number; summary: string | null; vlm_note: string | null; d_surf: number;
+  } | null;
+}
+
+export interface VideoOverride {
+  id: string;
+  job_id: string;
 }
 
 export interface CalcResult {

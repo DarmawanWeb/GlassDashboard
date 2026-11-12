@@ -1,4 +1,4 @@
-"""Orkestrasi alur GLASS: Lihat -> Nilai -> Hitung -> Bayar."""
+"""Orkestrasi alur GLASS: Lihat -> Pindai (drone) -> Nilai -> Hitung -> Bayar."""
 from __future__ import annotations
 
 from functools import lru_cache
@@ -6,6 +6,7 @@ from functools import lru_cache
 import numpy as np
 
 from . import actuarial, contour, scenario, sources
+from .drone import mission, uploads, vlm
 from .geo import nearest, overlays
 from .params import ASSET_TYPES, N_NEIGHBORS, ZONES, PmlParams, PolicyParams, ScenarioParams, zone_of
 from .sdsi import sdsi
@@ -27,15 +28,57 @@ def _observe(p: ScenarioParams) -> tuple[tuple[dict, ...], tuple[dict, ...], str
     return tuple(assets), tuple(clouds), "contoh"
 
 
-def run(p: ScenarioParams, policy: PolicyParams, pml_p: PmlParams = PmlParams()) -> dict:
+def observed_assets(p: ScenarioParams) -> dict[str, dict]:
+    """Aset mentah hasil LIHAT (sebelum drone), per ID."""
+    return {a["id"]: a for a in _observe(p)[0]}
+
+
+def _keep_satellite(a: dict) -> None:
+    a.setdefault("sat", {"d_vol": a["d_vol"], "d_surf": a["d_surf"], "d_water": a["d_water"], "observed": a["observed"]})
+
+
+def _apply_drone(p: ScenarioParams, assets: list[dict], drone_ids, video) -> None:
+    """PINDAI: aset yang sudah diperiksa drone (atau video unggahan) memakai nilai sensor dari drone."""
+    by_id = {a["id"]: a for a in assets}
+    raw = observed_assets(p)
+    key = mission.scenario_key(p)
+    for aid in dict.fromkeys(drone_ids or ()):
+        a = by_id.get(aid)
+        if a is None:
+            continue
+        e = mission.scan(p, raw[aid])["estimate"]
+        _keep_satellite(a)
+        a.update(d_vol=e["d_vol"], d_surf=e["d_surf"], d_water=e["d_water"], observed=True, source="drone")
+        a["drone"] = {"roof": e["roof"], "vol": e["vol"], "wet": e["wet"], "cls": e["cls"], "label": e["label"],
+                      "confidence": e["confidence"], "key": key}
+    for v in video or ():
+        a = by_id.get(v["id"])
+        if a is None:
+            continue
+        try:
+            res = uploads.status(v["job_id"]).get("result")
+        except (FileNotFoundError, ValueError):
+            res = None
+        if not res:
+            continue
+        _keep_satellite(a)
+        a.update(d_surf=res["d_surf"], observed=True, source="video")
+        a["video"] = {"job_id": v["job_id"], "damage": res["damage"], "label": res["label"], "method": res["method"]}
+
+
+def run(p: ScenarioParams, policy: PolicyParams, pml_p: PmlParams = PmlParams(),
+        drone_ids: tuple[str, ...] = (), video: tuple[dict, ...] = ()) -> dict:
     raw, clouds, mode = _observe(p)
     assets = [dict(a) for a in raw]
+    for a in assets:
+        a["source"] = "satelit"
+    _apply_drone(p, assets, drone_ids, video)
 
     # NILAI: SDSI untuk aset yang terlihat; foto aset tertutup awan ditebak dari tetangga
     obs = [a for a in assets if a["observed"]]
     hid = [a for a in assets if not a["observed"]]
     for a in obs:
-        a.update(sdsi(a["type"], a["d_vol"], a["d_surf"], a["d_water"]))
+        a.update(sdsi(a["type"], a["d_vol"], a["d_surf"], a["d_water"], a["source"]))
         a["neighbors"] = []
     if hid and obs:
         idx, _ = nearest(np.array([a["lon"] for a in hid]), np.array([a["lat"] for a in hid]),
@@ -97,6 +140,9 @@ def run(p: ScenarioParams, policy: PolicyParams, pml_p: PmlParams = PmlParams())
         "n_over": sum(1 for a in obs if a["over"] > 0),
         "missed_severe_count": len(missed),
         "missed_severe_claim": sum(a["claim"] for a in missed),
+        "n_drone": sum(1 for a in assets if a["source"] == "drone"),
+        "n_video": sum(1 for a in assets if a["source"] == "video"),
+        "n_cloud_cleared": sum(1 for a in assets if a.get("sat") and not a["sat"]["observed"]),
     }
 
     for a in assets:
@@ -115,6 +161,10 @@ def run(p: ScenarioParams, policy: PolicyParams, pml_p: PmlParams = PmlParams())
         "pml": actuarial.pml(total_si, total_claims, pml_p),
         "shake_line": shake_line,
     }
+
+
+def meta_center() -> list[float]:
+    return overlays()["center"]
 
 
 def shake_grid(step: int = 2) -> list[list[float]]:
@@ -136,6 +186,12 @@ def meta() -> dict:
         "data_mode": "file" if sources.assets_file() else "contoh",
         "geo": overlays(),
         "shake_grid": shake_grid(),
+        "drone": {
+            "vlm": {k: v for k, v in vlm.config().items() if k != "url"},
+            "camera": mission.camera(),
+            "flight": mission.FLIGHT.__dict__,
+            "max_upload_mb": uploads.max_bytes() // (1024 * 1024),
+        },
     }
 
 

@@ -34,3 +34,22 @@ export const SURF_CLASSES = [
   { value: 2 / 3, label: "Rusak berat" },
   { value: 1, label: "Hancur" },
 ];
+
+/** Kelas kerusakan bangunan (gaya xBD), warnanya mengikuti tingkat keparahan zona. */
+export const DAMAGE_CLASS = [
+  { label: "Tidak rusak", color: "#0CA30C", ink: "#ffffff" },
+  { label: "Rusak ringan", color: "#FAB219", ink: "#13283F" },
+  { label: "Rusak berat", color: "#EC835A", ink: "#13283F" },
+  { label: "Hancur", color: "#D03B3B", ink: "#ffffff" },
+] as const;
+
+export const SOURCE_LABEL = { satelit: "Satelit", drone: "Drone", video: "Video drone" } as const;
+
+/** Tiga sensor drone sesuai rancangan GLASS. */
+export const DRONE_SENSOR = {
+  rgb: { label: "Kamera RGB", spec: "< 2 cm/piksel", reads: "kerusakan atap & puing" },
+  lidar: { label: "LiDAR", spec: "> 100 titik/m²", reads: "runtuhan & perubahan bentuk" },
+  thermal: { label: "Termal LWIR", spec: "< 50 mK", reads: "genangan & dinding basah" },
+} as const;
+
+export const DRONE_ACCENT = "#7cc4ff";
