@@ -5,6 +5,7 @@ import type { PlayerState } from "@/lib/mission";
 import { DAMAGE_CLASS, DRONE_SENSOR, TYPE_LABEL } from "@/lib/palette";
 import { count, dec, pct, rupiah } from "@/lib/format";
 import { Ledger, RangeField, Segmented } from "../ui/controls";
+import VideoUpload from "../drone/VideoUpload";
 
 export interface StepPindaiProps {
   meta: Meta;
@@ -38,7 +39,7 @@ function minutes(m: number) {
 }
 
 export default function StepPindai(p: StepPindaiProps) {
-  const { scenario, baseScenario, mission, missionError, state, scans, order } = p;
+  const { meta, scenario, baseScenario, mission, missionError, state, scans, order } = p;
   const status = state?.status ?? "idle";
   const flying = status === "playing" || status === "paused";
   const done = status === "done";
@@ -148,6 +149,10 @@ export default function StepPindai(p: StepPindaiProps) {
           </div>
         </div>
       )}
+
+      <hr className="divider" />
+      <VideoUpload meta={meta} mission={mission} selectedId={p.selectedId} video={p.video}
+        onApply={p.onApplyVideo} onRemove={p.onRemoveVideo} />
 
       <div className="tiny">
         Citra drone di langkah ini dibuat oleh simulator dari data contoh (bukan foto asli). Karena dunianya buatan, kondisi
