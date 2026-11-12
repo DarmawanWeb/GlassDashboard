@@ -6,9 +6,13 @@ Mode misi (simulasi): seperti pipeline xBD dua tahap.
   + LiDAR: hilang volume dari beda tinggi sebelum/sesudah.
   + Termal: area basah = piksel dingin yang bukan tumbuhan.
 
-Mode video (unggahan): satu gambar tanpa pembanding. Tekstur kasar abu-abu = puing, permukaan rata
-bergaris lurus = bangunan utuh, cokelat/gelap halus = genangan. Ini aturan visi komputer sederhana,
-bukan model yang dilatih; untuk video asli lebih baik ditambah VLM (lihat vlm.py).
+Mode video (unggahan), dua cara:
+  - Ada video sebelum bencana: tiap gambar disejajarkan ke gambar sebelum (align.py), lalu bangunan dicari di
+    gambar sebelum dan kerusakannya = bagian bangunan yang berubah. Cara ini sama dengan mode misi.
+  - Hanya video sesudah: tekstur kasar abu-abu = puing, permukaan rata berwarna = atap utuh, cokelat/gelap halus
+    = genangan. Ini aturan visi komputer sederhana, bukan model yang dilatih; untuk video asli lebih baik
+    ditambah VLM (lihat vlm.py).
+Di kedua cara, area terbangun dipecah menjadi bangunan (komponen terhubung) dan tiap bangunan diberi kelas.
 """
 from __future__ import annotations
 
@@ -194,17 +198,15 @@ def jpeg(rgb: np.ndarray, quality: int = 84) -> bytes:
     return buf.tobytes()
 
 
-# ---------------------------------------------------------------- video unggahan (satu gambar)
-def analyze_frame(rgb: np.ndarray) -> dict:
-    """Perkiraan kerusakan dari satu foto drone tanpa pembanding (aturan visi komputer sederhana)."""
+# ---------------------------------------------------------------- video unggahan
+def segment(rgb: np.ndarray) -> dict[str, np.ndarray]:
+    """Kelas piksel kasar dari satu foto udara: tumbuhan, langit, genangan, puing, atap utuh."""
     hh, ww = rgb.shape[:2]
     hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV).astype(np.float32)
     hue, sat, val = hsv[..., 0] * 2, hsv[..., 1] / 255, hsv[..., 2] / 255
-    lab = _lab(rgb)
-    lum = lab[..., 0]
+    lum = _lab(rgb)[..., 0]
     std = local_std(lum, 9)
-    g = exg(rgb)
-    veg = (g > 0.07) & (sat > 0.12)
+    veg = (exg(rgb) > 0.07) & (sat > 0.12)
 
     # langit (video miring): area terang & halus yang menyentuh tepi atas
     sky_seed = (val > 0.62) & (std < 3.5) & (sat < 0.45)
@@ -229,14 +231,62 @@ def analyze_frame(rgb: np.ndarray) -> dict:
     brownish = (hue > 22) & (hue < 52) & (sat < 0.5)
     intact = ~veg & ~sky & ~water & ~rubble & (
         ((sat > 0.35) & (val > 0.28) & ~brownish) | ((sat < 0.12) & (val > 0.55) & (std < 7)))
+    return {"veg": veg, "sky": sky, "water": water, "rubble": rubble, "intact": intact}
+
+
+def buildings(built: np.ndarray, damaged: np.ndarray, min_px: int) -> list[dict]:
+    """Bangunan = komponen terhubung dari area terbangun; kelasnya dari porsi piksel yang rusak."""
+    m = cv2.morphologyEx(built.astype(np.uint8), cv2.MORPH_CLOSE, K5)
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    out = []
+    for i in range(1, n):
+        x, y, w, h, area = (int(v) for v in stats[i])
+        if area < min_px:
+            continue
+        comp = lab[y:y + h, x:x + w] == i
+        frac = float(damaged[y:y + h, x:x + w][comp].mean())
+        out.append({"area": area, "cls": damage_class(frac), "pct": round(frac * 100, 1),
+                    "bbox": [x, y, x + w, y + h], "poly": _polygon(comp, x, y)})
+    out.sort(key=lambda d: -d["area"])
+    return out[:60]
+
+
+def _frame_overlay(rgb: np.ndarray, damaged: np.ndarray, water: np.ndarray, dets: list[dict],
+                   valid: np.ndarray | None = None) -> np.ndarray:
+    """Mata AI untuk video: rusak = merah, genangan = biru, garis tepi tiap bangunan sesuai kelasnya."""
+    base = rgb.astype(np.float32) * 0.5 + 34
+    if valid is not None:
+        base[~valid] *= 0.55                       # di luar jangkauan gambar sebelum: tidak dinilai
+    base[water] = base[water] * 0.45 + np.array([42, 120, 214], np.float32) * 0.55
+    k9 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    vis = cv2.morphologyEx(damaged.astype(np.uint8), cv2.MORPH_CLOSE, k9).astype(bool)
+    base[vis] = base[vis] * 0.35 + np.array([232, 56, 64], np.float32) * 0.65
+    out = np.clip(base, 0, 255).astype(np.uint8)
+    for d in dets:
+        if len(d["poly"]) >= 3:
+            cv2.polylines(out, [np.array(d["poly"], np.int32)], True, ZONE_RGB[d["cls"]], 2, cv2.LINE_AA)
+    return out
+
+
+def _summary(dets: list[dict]) -> dict:
+    by = [0, 0, 0, 0]
+    for d in dets:
+        by[d["cls"]] += 1
+    return {"buildings": len(dets), "by_class": by}
+
+
+def _min_px(rgb: np.ndarray) -> int:
+    return max(80, int(rgb.shape[0] * rgb.shape[1] * 0.0004))
+
+
+def analyze_frame(rgb: np.ndarray) -> dict:
+    """Perkiraan kerusakan dari satu foto drone tanpa pembanding (aturan visi komputer sederhana)."""
+    s = segment(rgb)
+    rubble, intact, water, veg, sky = s["rubble"], s["intact"], s["water"], s["veg"], s["sky"]
     built = rubble.sum() + intact.sum()
     frac = float(rubble.sum() / built) if built > 0 else 0.0
     scene = max(int((~sky).sum()), 1)
-    k9 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-    rub_vis = cv2.morphologyEx(rubble.astype(np.uint8), cv2.MORPH_CLOSE, k9).astype(bool)
-    base = rgb.astype(np.float32) * 0.5 + 34
-    base[water] = base[water] * 0.45 + np.array([42, 120, 214], np.float32) * 0.55
-    base[rub_vis] = base[rub_vis] * 0.35 + np.array([232, 56, 64], np.float32) * 0.65
+    dets = buildings(rubble | intact, rubble, _min_px(rgb))
     return {
         "damage": round(frac, 4),
         "cls": damage_class(frac),
@@ -244,5 +294,43 @@ def analyze_frame(rgb: np.ndarray) -> dict:
         "vegetation": round(float(veg.sum() / scene), 4),
         "built": round(float(built / scene), 4),
         "confidence": round(float(np.clip(built / scene * 1.6, 0.15, 0.9)), 3),
-        "_overlay": np.clip(base, 0, 255).astype(np.uint8),
+        **_summary(dets),
+        "_overlay": _frame_overlay(rgb, rubble, water, dets),
+    }
+
+
+def _match_light(src: np.ndarray, ref: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Samakan kecerahan gambar sebelum dengan gambar sesudah (jam & cuaca pengambilan bisa beda)."""
+    a = cv2.cvtColor(src, cv2.COLOR_RGB2LAB).astype(np.float32)
+    b = cv2.cvtColor(ref, cv2.COLOR_RGB2LAB).astype(np.float32)
+    if mask.sum() > 100:
+        a[..., 0] += float(np.median(b[..., 0][mask]) - np.median(a[..., 0][mask]))
+    return cv2.cvtColor(np.clip(a, 0, 255).astype(np.uint8), cv2.COLOR_LAB2RGB)
+
+
+def analyze_pair(pre: np.ndarray, valid: np.ndarray, post: np.ndarray) -> dict | None:
+    """Kerusakan dari pasangan gambar sebelum (sudah disejajarkan) dan sesudah bencana.
+
+    Bangunan dicari di gambar sebelum (atap utuh), lalu rusak = bagian bangunan yang warna/teksturnya berubah.
+    None kalau di area yang tumpang-tindih tidak ada bangunan yang terlihat.
+    """
+    sp, sq = segment(pre), segment(post)
+    built = sp["intact"] & valid
+    if built.sum() < _min_px(post):
+        return None
+    changed = change_map(_match_light(pre, post, valid), post) & valid
+    damaged = changed & built
+    frac = float(damaged.sum() / built.sum())
+    water = sq["water"] & valid & ~sp["water"]
+    area = max(int((valid & ~sq["sky"]).sum()), 1)
+    dets = buildings(built, changed, _min_px(post))
+    return {
+        "damage": round(frac, 4),
+        "cls": damage_class(frac),
+        "water": round(float(water.sum() / area), 4),
+        "vegetation": round(float((sq["veg"] & valid).sum() / area), 4),
+        "built": round(float(built.sum() / area), 4),
+        "confidence": round(float(np.clip(0.55 + valid.mean() * 0.4, 0.2, 0.95)), 3),
+        **_summary(dets),
+        "_overlay": _frame_overlay(post, damaged, water, dets, valid),
     }

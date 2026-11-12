@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from glass import pipeline
-from glass.drone import mission, vlm
+from glass.drone import align, mission, vlm
 from glass.drone.render import render_scene
-from glass.drone.vision import analyze_frame, analyze_scene
+from glass.drone.vision import analyze_frame, analyze_pair, analyze_scene
 from glass.params import ScenarioParams
 
 client = TestClient(app)
@@ -150,3 +150,58 @@ def test_certificate_in_english():
 def test_vlm_prompt_follows_language():
     assert "in English" in vlm.prompt("en") and "in Indonesian" in vlm.prompt("id")
     assert '"ringkasan"' in vlm.prompt("en")       # kunci JSON tetap sama di semua bahasa
+
+
+def _shift(img, angle=6.0, zoom=1.06, dx=30, dy=-18):
+    m = cv2.getRotationMatrix2D((img.shape[1] / 2, img.shape[0] / 2), angle, zoom)
+    m[0, 2] += dx
+    m[1, 2] += dy
+    return cv2.warpAffine(img, m, (img.shape[1], img.shape[0]), borderMode=cv2.BORDER_REFLECT), m
+
+
+def test_alignment_recovers_camera_shift():
+    sc = render_scene(pipeline.observed_assets(P)["SKL-073"], P.seed)
+    post, m = _shift(sc.rgb_post)
+    got = align.best_match([align.features(sc.rgb_pre)], align.features(post))
+    assert got is not None and got.index == 0
+    pts = np.float32([[100, 100], [860, 100], [480, 270], [100, 440]])
+    ones = np.ones((4, 1))
+    assert np.abs(np.hstack([pts, ones]) @ got.hm[:2].T - np.hstack([pts, ones]) @ m.T).max() < 3
+    before, valid = align.warp(sc.rgb_pre, got.hm, post.shape)
+    r = analyze_pair(before, valid, post)
+    assert r is not None and 0.2 < r["damage"] < 0.8 and r["buildings"] >= 5
+
+
+def test_alignment_rejects_unrelated_images():
+    a = pipeline.observed_assets(P)
+    one = render_scene(a["SKL-079"], P.seed).rgb_pre
+    other = render_scene(a["PKM-006"], P.seed).rgb_pre
+    assert align.best_match([align.features(one)], align.features(other)) is None
+
+
+def _video(path, frames):
+    vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 5, (frames[0].shape[1], frames[0].shape[0]))
+    for f in frames:
+        vw.write(cv2.cvtColor(f, cv2.COLOR_RGB2BGR))
+    vw.release()
+
+
+def test_upload_with_before_video_uses_change_detection(tmp_path):
+    sc = render_scene(pipeline.observed_assets(P)["KTR-018"], P.seed)
+    _video(tmp_path / "sebelum.avi", [sc.rgb_pre] * 10)
+    _video(tmp_path / "sesudah.avi", [_shift(sc.rgb_post, angle=a)[0] for a in (2, 4, 6, 8, 10)] * 2)
+    with open(tmp_path / "sesudah.avi", "rb") as f, open(tmp_path / "sebelum.avi", "rb") as g:
+        r = client.post("/api/drone/uploads", files={"file": ("sesudah.avi", f, "video/x-msvideo"),
+                                                     "pre_file": ("sebelum.avi", g, "video/x-msvideo")})
+    jid = r.json()["id"]
+    for _ in range(300):
+        s = client.get(f"/api/drone/uploads/{jid}").json()
+        if s["status"] in ("done", "error"):
+            break
+        time.sleep(0.05)
+    assert s["status"] == "done", s["error"]
+    res = s["result"]
+    assert res["method"] == "change" and res["aligned_frames"] >= 1 and res["pre_frames"] >= 1
+    k = next(f["i"] for f in s["frames"] if f["aligned"])
+    assert client.get(f"/api/drone/uploads/{jid}/frames/{k}.jpg?kind=pre").status_code == 200
+    assert res["damage"] > 0.4
