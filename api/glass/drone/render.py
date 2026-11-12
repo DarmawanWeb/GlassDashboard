@@ -331,10 +331,6 @@ def damage_building(cv: Canvas, pre: Canvas, b: Bldg, nz: Noise, rng) -> np.ndar
         cv.alb[dm] = _rgb((34, 50, 50)) * ripple[:, None]
         cv.hgt[dm] = np.nan
         cv.mat[dm] = HOLE
-        edge = dm & (cv2.distanceTransform(dm.astype(np.uint8), cv2.DIST_L2, 3) * GSD < 0.9)
-        cv.alb[edge] = nz.rubble[edge]
-        cv.mat[edge] = RUBBLE
-        cv.hgt[edge] = 0.1
         if b.r >= 0.3:   # lempengan yang jatuh ke sungai
             for _ in range(int(rng.integers(2, 4))):
                 off = tc + rng.uniform(-0.6, 0.6) * b.r * r.hl
@@ -347,7 +343,7 @@ def damage_building(cv: Canvas, pre: Canvas, b: Bldg, nz: Noise, rng) -> np.ndar
                 m2 = np.zeros((H, W), bool)
                 m2[qy, qx] = qin
                 m2 &= dm
-                cv.alb[m2] = _rgb((64, 66, 68)) * (0.8 + 0.25 * nz.rand[m2])[:, None]
+                cv.alb[m2] = np.clip(nz.rubble[m2] * 1.08, 0, 1)   # lempengan patah: beton pecah berdebu
                 cv.hgt[m2] = rng.uniform(-1.8, -1.0)
                 cv.mat[m2] = RUBBLE
         return dm
