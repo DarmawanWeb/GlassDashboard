@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [sweepKey, setSweepKey] = useState(0);
   const [about, setAbout] = useState(false);
   const sweptSeed = useRef<number | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
 
   const setStep = useCallback((s: StepId) => {
     setStepState(s);
@@ -49,6 +50,9 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { setStepState(readHash()); }, []);
+
+  /* panel selalu mulai dari atas saat pindah langkah */
+  useEffect(() => { panelRef.current?.scrollTo({ top: 0 }); }, [step]);
 
   useEffect(() => {
     api.meta()
@@ -172,7 +176,7 @@ export default function Dashboard() {
           )}
         </section>
 
-        <aside className="panel" aria-label="Penjelasan langkah">
+        <aside className="panel" ref={panelRef} aria-label="Penjelasan langkah">
           <div className="panel-inner">
             {error && meta && <div className="note note-bad small">Perhitungan gagal: {error}</div>}
             {selected && meta && step !== "lihat" && <AssetCard asset={selected} meta={meta} onClose={() => setSelectedId(null)} />}
