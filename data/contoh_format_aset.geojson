@@ -1,0 +1,245 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8099,
+     -0.8176
+    ]
+   },
+   "properties": {
+    "id": "KTR-001",
+    "type": "kantor",
+    "sum_insured": 6400000000.0,
+    "d_vol": 0.569,
+    "d_surf": 0.667,
+    "d_water": 0.251,
+    "mmi": 7.78,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8902,
+     -0.822
+    ]
+   },
+   "properties": {
+    "id": "PKM-001",
+    "type": "puskesmas",
+    "sum_insured": 4300000000.0,
+    "d_vol": 0.242,
+    "d_surf": 0.333,
+    "d_water": 0.138,
+    "mmi": 7.97,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8121,
+     -0.8242
+    ]
+   },
+   "properties": {
+    "id": "SKL-001",
+    "type": "sekolah",
+    "sum_insured": 2800000000.0,
+    "d_vol": 0.612,
+    "d_surf": 1.0,
+    "d_water": 0.57,
+    "mmi": 8.17,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8231,
+     -0.8517
+    ]
+   },
+   "properties": {
+    "id": "SKL-002",
+    "type": "sekolah",
+    "sum_insured": 4800000000.0,
+    "d_vol": 0.276,
+    "d_surf": 0.333,
+    "d_water": 0.205,
+    "mmi": 7.87,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8913,
+     -0.8682
+    ]
+   },
+   "properties": {
+    "id": "KTR-002",
+    "type": "kantor",
+    "sum_insured": 19500000000.0,
+    "d_vol": 0.017,
+    "d_surf": 0.0,
+    "d_water": 0.008,
+    "mmi": 7.09,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8869,
+     -0.8759
+    ]
+   },
+   "properties": {
+    "id": "KTR-003",
+    "type": "kantor",
+    "sum_insured": 17200000000.0,
+    "d_vol": 0.024,
+    "d_surf": 0.0,
+    "d_water": 0.0,
+    "mmi": 7.65,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8363,
+     -0.8803
+    ]
+   },
+   "properties": {
+    "id": "SKL-003",
+    "type": "sekolah",
+    "sum_insured": 2500000000.0,
+    "d_vol": 0.738,
+    "d_surf": 1.0,
+    "d_water": 0.41,
+    "mmi": 8.41,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8847,
+     -0.8814
+    ]
+   },
+   "properties": {
+    "id": "PKM-002",
+    "type": "puskesmas",
+    "sum_insured": 4900000000.0,
+    "d_vol": 0.0,
+    "d_surf": 0.0,
+    "d_water": 0.035,
+    "mmi": 7.61,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8286,
+     -0.8847
+    ]
+   },
+   "properties": {
+    "id": "SKL-004",
+    "type": "sekolah",
+    "sum_insured": 3800000000.0,
+    "d_vol": 0.271,
+    "d_surf": 0.333,
+    "d_water": 0.0,
+    "mmi": 7.84,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8561,
+     -0.8858
+    ]
+   },
+   "properties": {
+    "id": "SKL-005",
+    "type": "sekolah",
+    "sum_insured": 4700000000.0,
+    "d_vol": 0.8,
+    "d_surf": 1.0,
+    "d_water": 0.477,
+    "mmi": 8.83,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8737,
+     -0.8858
+    ]
+   },
+   "properties": {
+    "id": "PKM-003",
+    "type": "puskesmas",
+    "sum_insured": 6900000000.0,
+    "d_vol": 0.212,
+    "d_surf": 0.0,
+    "d_water": 0.3,
+    "mmi": 8.08,
+    "observed": true
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     119.8671,
+     -0.8869
+    ]
+   },
+   "properties": {
+    "id": "PKM-004",
+    "type": "puskesmas",
+    "sum_insured": 7500000000.0,
+    "d_vol": 0.789,
+    "d_surf": 1.0,
+    "d_water": 0.472,
+    "mmi": 7.63,
+    "observed": true
+   }
+  }
+ ]
+}
