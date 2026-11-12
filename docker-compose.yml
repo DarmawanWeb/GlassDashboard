@@ -4,7 +4,7 @@ name: glass
 services:
   api:
     build: ./api
-    image: glass-api:0.2.0
+    image: glass-api:0.3.0
     restart: unless-stopped
     environment:
       # Kosong = skenario contoh. Isi /data/<file>.geojson untuk memakai data aset asli.
@@ -24,7 +24,7 @@ services:
 
   web:
     build: ./web
-    image: glass-web:0.2.0
+    image: glass-web:0.3.0
     restart: unless-stopped
     environment:
       API_URL: http://api:8000

@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-MODEL_VERSION = "glass-dashboard-0.2"
+MODEL_VERSION = "glass-dashboard-0.3"
 EVENT_NAME = "Gempa & Tsunami Palu M7,5 (28 September 2018)"
 EVENT_NAME_EN = "Palu M7.5 earthquake & tsunami (28 September 2018)"
 
