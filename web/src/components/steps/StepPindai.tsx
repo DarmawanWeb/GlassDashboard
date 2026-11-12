@@ -134,7 +134,8 @@ export default function StepPindai(p: StepPindaiProps) {
           <h3 className="section-title">Hasil AI per aset</h3>
           <p className="small muted" style={{ margin: "0 0 8px" }}>
             Ketepatan kelas dibanding kondisi sebenarnya di simulasi: <b style={{ color: "var(--ink)" }}>{pct(acc)}</b> dari {results.length} aset;
-            selisih rata-rata persentase atap {dec(mae * 100, 1)} poin.
+            selisih rata-rata persentase atap {dec(mae * 100, 1)} poin. Angka ini dari dunia simulasi; untuk foto asli
+            ketepatannya harus diuji ulang dengan data lapangan.
           </p>
           <div className="scan-list" role="list">
             {[...results].reverse().map((r) => (
