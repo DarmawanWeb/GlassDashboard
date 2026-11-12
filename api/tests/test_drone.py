@@ -107,6 +107,7 @@ def test_upload_video_flow(tmp_path):
         time.sleep(0.05)
     assert s["status"] == "done", s["error"]
     assert s["result"]["damage"] > 0.2 and len(s["frames"]) >= 1
+    assert s["result"]["method"] == "cv" and s["result"]["vlm_status"] == "off"
     assert client.get(f"/api/drone/uploads/{jid}/frames/0.jpg?kind=raw").status_code == 200
     sc = client.post("/api/scenario", json={**REF, "video": [{"id": "SKL-018", "job_id": jid}]}).json()
     assert next(x for x in sc["assets"] if x["id"] == "SKL-018")["source"] == "video"
@@ -124,3 +125,28 @@ def test_certificate_lists_drone_sources():
     a = next(x for x in r["assets"] if x["id"] == "SKL-018")
     cert = client.post("/api/certificates", json=a).json()
     assert cert["data_sources"][0].startswith("Drone")
+
+
+def test_upload_bad_file_reports_code():
+    r = client.post("/api/drone/uploads", files={"file": ("rusak.mp4", b"bukan video", "video/mp4")})
+    jid = r.json()["id"]
+    for _ in range(100):
+        s = client.get(f"/api/drone/uploads/{jid}").json()
+        if s["status"] in ("done", "error"):
+            break
+        time.sleep(0.05)
+    assert s["status"] == "error" and s["error_code"] in ("unreadable_video", "no_frames")
+
+
+def test_certificate_in_english():
+    r = pipeline.run(P, pipeline.PolicyParams(), drone_ids=("SKL-018",))
+    a = next(x for x in r["assets"] if x["id"] == "SKL-018")
+    cert = client.post("/api/certificates?lang=en", json=a).json()
+    assert cert["asset_type"] == "School" and cert["data_sources"][0] == "Drone: RGB camera"
+    assert cert["event"].startswith("Palu M7.5")
+    assert client.post("/api/certificates/verify", json=cert).json()["valid"]
+
+
+def test_vlm_prompt_follows_language():
+    assert "in English" in vlm.prompt("en") and "in Indonesian" in vlm.prompt("id")
+    assert '"ringkasan"' in vlm.prompt("en")       # kunci JSON tetap sama di semua bahasa

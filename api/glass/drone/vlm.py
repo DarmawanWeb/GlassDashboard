@@ -25,8 +25,14 @@ earthquake and tsunami. Assess the visible buildings. Reply with ONLY one JSON o
 "persen_kerusakan": integer 0-100 (share of building area that is damaged),
 "genangan_persen": integer 0-100 (share of ground covered by water or mud),
 "bangunan_terlihat": integer (number of buildings visible),
-"objek": list of up to 5 notable things, in Indonesian,
-"ringkasan": one or two short sentences in Indonesian about roofs, debris, road access and flooding."""
+"objek": list of up to 5 notable things, in {lang},
+"ringkasan": one or two short sentences in {lang} about roofs, debris, road access and flooding."""
+LANG_NAME = {"id": "Indonesian", "en": "English"}
+
+
+def prompt(lang: str = "id") -> str:
+    """Prompt VLM; kunci JSON tetap sama, hanya bahasa jawaban yang berubah."""
+    return PROMPT.replace("{lang}", LANG_NAME.get(lang, "Indonesian"))
 
 CLASSES = {"tidak_rusak": 0, "tidak rusak": 0, "no-damage": 0, "no_damage": 0, "none": 0,
            "ringan": 1, "minor": 1, "minor-damage": 1,
@@ -96,7 +102,8 @@ def parse(text: str) -> dict:
     }
 
 
-def ask(jpeg: bytes, prompt: str = PROMPT) -> dict:
+def ask(jpeg: bytes, lang: str = "id") -> dict:
+    text_prompt = prompt(lang)
     cfg = config()
     if not cfg["enabled"]:
         raise VlmError("VLM belum diaktifkan (GLASS_VLM_PROVIDER kosong)")
@@ -107,7 +114,7 @@ def ask(jpeg: bytes, prompt: str = PROMPT) -> dict:
     prov, url, model = cfg["provider"], cfg["url"], cfg["model"]
     if prov == "ollama":
         body = {"model": model, "stream": False, "format": "json", "think": False, "options": {"temperature": 0.1},
-                "messages": [{"role": "user", "content": prompt, "images": [b64]}]}
+                "messages": [{"role": "user", "content": text_prompt, "images": [b64]}]}
         try:
             out = _post(f"{url}/api/chat", body, {}, timeout)
         except VlmError as e:
@@ -119,7 +126,7 @@ def ask(jpeg: bytes, prompt: str = PROMPT) -> dict:
     elif prov == "openai":
         body = {"model": model, "temperature": 0.1, "max_tokens": 400,
                 "messages": [{"role": "user", "content": [
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": text_prompt},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]}
         out = _post(f"{url}/chat/completions", body, {"authorization": f"Bearer {key}"} if key else {}, timeout)
         text = (out.get("choices") or [{}])[0].get("message", {}).get("content", "")
@@ -127,7 +134,7 @@ def ask(jpeg: bytes, prompt: str = PROMPT) -> dict:
         body = {"model": model, "max_tokens": 400,
                 "messages": [{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-                    {"type": "text", "text": prompt}]}]}
+                    {"type": "text", "text": text_prompt}]}]}
         out = _post(f"{url}/v1/messages", body, {"x-api-key": key, "anthropic-version": "2023-06-01"}, timeout)
         text = "".join(b.get("text", "") for b in out.get("content", []) if b.get("type") == "text")
     res = parse(text)
