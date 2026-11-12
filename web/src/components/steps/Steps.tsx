@@ -39,6 +39,9 @@ export function StepLihat({ scenario, sensor, onSensor, cloud, onCloud }: {
       ]} />
       <RangeField label="Tutupan awan" value={cloud} min={0} max={0.4} step={0.02} onChange={onCloud} display={pct(cloud)}
         hint="Geser untuk melihat apa yang terjadi kalau langit lebih berawan." ticks={["0%", "10%", "20%", "30%", "40%"]} />
+      <div className="note small">
+        Aset yang fotonya tertutup awan akan diperiksa drone di langkah berikutnya, <b>Pindai</b>.
+      </div>
       <div className="tiny">
         Sumber data asli yang bisa dipakai: foto satelit Maxar dan dataset xBD, radar Sentinel-1, peta banjir GFM, dan data
         guncangan USGS. Peta dasar: mosaik Sentinel-2 tahun 2018.
@@ -55,8 +58,11 @@ export function StepNilai({ meta, scenario, policy, selected }: { meta: Meta; sc
         Tiga nilai digabung dengan bobot, seperti nilai rapor. Hasilnya 0 sampai 1, lalu dikelompokkan ke empat zona warna.
       </Head>
       <div className="formula">
-        SDSI = <span className="w">w<sub>1</sub></span>·Radar + <span className="w">w<sub>2</sub></span>·Foto + <span className="w">w<sub>3</sub></span>·Air,
+        SDSI = <span className="w">w<sub>1</sub></span>·D<sub>vol</sub> + <span className="w">w<sub>2</sub></span>·D<sub>surf</sub> + <span className="w">w<sub>3</sub></span>·D<sub>water</sub>,
         dengan <span className="w">w<sub>1</sub>+w<sub>2</sub>+w<sub>3</sub></span> = 1
+        <div className="tiny" style={{ marginTop: 4 }}>
+          D<sub>vol</sub>: radar satelit atau LiDAR drone. D<sub>surf</sub>: foto satelit atau kamera drone. D<sub>water</sub>: peta banjir atau kamera termal.
+        </div>
       </div>
       <div>
         <h3 className="section-title">Hasil untuk {count(scenario.summary.n_assets)} aset</h3>
@@ -79,8 +85,8 @@ export function StepHitung({ scenario }: { scenario: Scenario }) {
       </Head>
       <Ledger rows={[
         { label: "Total nilai aset", note: `${count(s.n_assets)} aset contoh`, value: rupiah(s.total_sum_insured) },
-        { label: "Cadangan klaim", note: `${count(s.n_observed)} aset yang fotonya terlihat`, value: rupiah(s.case_reserves) },
-        { label: "IBNR", note: `${count(s.n_hidden)} aset tertutup awan, ditebak dari 5 tetangga`, value: rupiah(s.ibnr) },
+        { label: "Cadangan klaim", note: `${count(s.n_observed)} aset terukur${s.n_drone + s.n_video ? `, ${count(s.n_drone + s.n_video)} di antaranya dari drone` : ""}`, value: rupiah(s.case_reserves) },
+        { label: "IBNR", note: s.n_hidden ? `${count(s.n_hidden)} aset tertutup awan, ditebak dari 5 tetangga` : "tidak ada lagi aset yang nilainya ditebak", value: rupiah(s.ibnr) },
         { label: "Total dana yang disisihkan", value: rupiah(s.total_reserves), kind: "total" },
         { label: "Rasio kerugian", note: "total dana ÷ total nilai aset", value: pct(s.loss_ratio, 1), kind: "sub" },
       ]} />
@@ -125,7 +131,7 @@ export function StepBayar({ scenario, policy, onPolicy, selected, onPickLargest 
           ["Gempa", "hari 0", "#d03b3b"],
           ["Data guncangan", "jam-an", "#7a8898"],
           ["Uang muka", "hitungan hari", SERIES.advance],
-          ["Foto satelit", "pasca-bencana", "#7a8898"],
+          ["Satelit & drone", "pasca-bencana", "#7a8898"],
           ["Sisa bayar", "sesuai SDSI", SERIES.topup],
         ].map(([t, sub, c]) => (
           <div className="tl-step" key={t}><span className="tl-dot" style={{ display: "block", background: c }} /><b>{t}</b>{sub}</div>
