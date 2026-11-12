@@ -1,13 +1,18 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Basemap, Meta, Policy, Scenario, ScenarioParams, Sensor, StepId } from "@/lib/types";
-import { api } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type {
+  Basemap, Meta, Mission, Policy, ScanResult, Scenario, ScenarioParams, Sensor, StepId, VideoOverride, ViewKind,
+} from "@/lib/types";
+import { api, viewUrl } from "@/lib/api";
+import { MissionPlayer, type PlayerState } from "@/lib/mission";
 import AssetCard from "./AssetCard";
 import AboutDialog from "./AboutDialog";
+import DroneFeed from "./drone/DroneFeed";
 import { Icon } from "./ui/controls";
 import { StepBayar, StepHitung, StepLihat, StepNilai } from "./steps/Steps";
+import StepPindai from "./steps/StepPindai";
 
 const GlassMap = dynamic(() => import("./map/GlassMap"), {
   ssr: false,
@@ -16,10 +21,14 @@ const GlassMap = dynamic(() => import("./map/GlassMap"), {
 
 const STEPS: { id: StepId; label: string }[] = [
   { id: "lihat", label: "Lihat" },
+  { id: "pindai", label: "Pindai" },
   { id: "nilai", label: "Nilai" },
   { id: "hitung", label: "Hitung" },
   { id: "bayar", label: "Bayar" },
 ];
+const VIEW_KINDS: ViewKind[] = ["rgb", "ai", "pre", "lidar", "thermal"];
+const noSub = () => () => {};
+const noSnap = (): PlayerState | null => null;
 
 function readHash(): StepId {
   if (typeof window === "undefined") return "lihat";
@@ -30,6 +39,7 @@ function readHash(): StepId {
 export default function Dashboard() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [scenario, setScenario] = useState<Scenario | null>(null);
+  const [baseScenario, setBaseScenario] = useState<Scenario | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -43,6 +53,20 @@ export default function Dashboard() {
   const [about, setAbout] = useState(false);
   const sweptSeed = useRef<number | null>(null);
   const panelRef = useRef<HTMLElement>(null);
+
+  /* drone */
+  const [mission, setMission] = useState<Mission | null>(null);
+  const [missionError, setMissionError] = useState<string | null>(null);
+  const [maxTargets, setMaxTargets] = useState(46);
+  const [scans, setScans] = useState<Record<string, ScanResult>>({});
+  const [fetched, setFetched] = useState<Record<string, ScanResult>>({});   // sudah dianalisis, belum "dipindai" di animasi
+  const [order, setOrder] = useState<string[]>([]);
+  const [player, setPlayer] = useState<MissionPlayer | null>(null);
+  const [useDrone, setUseDrone] = useState(true);
+  const [video, setVideo] = useState<VideoOverride[]>([]);
+  const [follow, setFollow] = useState(false);
+  const [feedBig, setFeedBig] = useState(false);
+  const pstate = useSyncExternalStore(player ? player.subscribe : noSub, player ? player.getSnapshot : noSnap, noSnap);
 
   const setStep = useCallback((s: StepId) => {
     setStepState(s);
@@ -64,12 +88,18 @@ export default function Dashboard() {
       .catch((e: Error) => setError(e.message));
   }, []);
 
+  /* hasil drone & video yang dipakai di perhitungan */
+  const droneIds = useMemo(() => (useDrone ? order : []), [useDrone, order]);
+  const videoUsed = useMemo(() => (useDrone ? video : []), [useDrone, video]);
+  const droneKey = `${droneIds.join(",")}|${videoUsed.map((v) => `${v.id}:${v.job_id}`).join(",")}`;
+  const hasDrone = droneIds.length + videoUsed.length > 0;
+
   useEffect(() => {
     if (!meta) return;
     const ctl = new AbortController();
     setLoading(true);
     const t = setTimeout(() => {
-      api.scenario(params, policy, ctl.signal)
+      api.scenario(params, policy, droneIds, videoUsed, ctl.signal)
         .then((s) => {
           setScenario(s);
           setError(null);
@@ -86,7 +116,80 @@ export default function Dashboard() {
         });
     }, 140);
     return () => { clearTimeout(t); ctl.abort(); };
-  }, [meta, params, policy]);
+    // droneKey mewakili isi droneIds & videoUsed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta, params, policy, droneKey]);
+
+  /* skenario tanpa drone, untuk perbandingan sebelum/sesudah */
+  useEffect(() => {
+    if (!meta || !hasDrone) { setBaseScenario(null); return; }
+    const ctl = new AbortController();
+    api.scenario(params, policy, [], [], ctl.signal).then(setBaseScenario).catch(() => {});
+    return () => ctl.abort();
+  }, [meta, params, policy, hasDrone]);
+
+  /* skenario baru -> misi & hasil drone diulang dari awal */
+  const resetDrone = useCallback(() => {
+    setPlayer((pl) => { pl?.destroy(); return null; });
+    setScans({});
+    setFetched({});
+    setOrder([]);
+    setVideo([]);
+  }, []);
+  useEffect(() => { resetDrone(); }, [params.seed, params.n_assets, params.cloud_cover, resetDrone]);
+
+  /* rencana misi */
+  useEffect(() => {
+    if (!meta) return;
+    const ctl = new AbortController();
+    const t = setTimeout(() => {
+      api.mission(params, maxTargets, ctl.signal)
+        .then((m) => { setMission(m); setMissionError(null); })
+        .catch((e: Error) => { if (e.name !== "AbortError") setMissionError(e.message); });
+    }, 200);
+    return () => { clearTimeout(t); ctl.abort(); };
+  }, [meta, params, maxTargets]);
+
+  /* rute berubah saat drone diam -> pemutar lama dibuang (hasil pindaian tetap) */
+  useEffect(() => {
+    setPlayer((pl) => { pl?.destroy(); return null; });
+  }, [mission]);
+
+  useEffect(() => () => player?.destroy(), [player]);
+
+  const requestScan = useCallback(async (id: string) => {
+    const r = await api.scan(params, id);
+    for (const k of VIEW_KINDS) { const im = new Image(); im.src = viewUrl(r.key, r.id, k); }
+    return r;
+  }, [params]);
+
+  const onScanned = useCallback((r: ScanResult) => {
+    setScans((s) => (s[r.id] ? s : { ...s, [r.id]: r }));
+    setOrder((o) => (o.includes(r.id) ? o : [...o, r.id]));
+  }, []);
+  const onFetched = useCallback((r: ScanResult) => setFetched((s) => (s[r.id] ? s : { ...s, [r.id]: r })), []);
+  const known = useMemo(() => ({ ...fetched, ...scans }), [fetched, scans]);
+
+  const startMission = useCallback(() => {
+    if (!mission) return;
+    const pl = new MissionPlayer(mission, requestScan, onScanned, pstate?.speed ?? 2, onFetched);
+    setPlayer((old) => { old?.destroy(); return pl; });
+    setSelectedId(null);
+    pl.play();
+  }, [mission, requestScan, onScanned, onFetched, pstate?.speed]);
+
+  const resetMission = useCallback(() => {
+    setPlayer((pl) => { pl?.destroy(); return null; });
+    setScans({});
+    setFetched({});
+    setOrder([]);
+  }, []);
+
+  const togglePlay = useCallback(() => {
+    if (!pstate || pstate.status === "idle") startMission();
+    else if (pstate.status === "playing") player?.pause();
+    else if (pstate.status === "paused") player?.play();
+  }, [pstate, player, startMission]);
 
   const selected = useMemo(() => scenario?.assets.find((a) => a.id === selectedId) ?? null, [scenario, selectedId]);
 
@@ -110,20 +213,21 @@ export default function Dashboard() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || e.metaKey || e.ctrlKey || e.altKey || about) return;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.metaKey || e.ctrlKey || e.altKey || about) return;
       const i = STEPS.findIndex((s) => s.id === step);
-      if (e.key === "ArrowRight" && i < 3) setStep(STEPS[i + 1].id);
+      if (e.key === "ArrowRight" && i < STEPS.length - 1) setStep(STEPS[i + 1].id);
       else if (e.key === "ArrowLeft" && i > 0) setStep(STEPS[i - 1].id);
-      else if (["1", "2", "3", "4"].includes(e.key)) setStep(STEPS[Number(e.key) - 1].id);
+      else if (["1", "2", "3", "4", "5"].includes(e.key)) setStep(STEPS[Number(e.key) - 1].id);
+      else if (e.key === " " && step === "pindai") togglePlay();
       else if (e.key.toLowerCase() === "s") newScenario();
       else if (e.key.toLowerCase() === "f") fullscreen();
-      else if (e.key === "Escape") setSelectedId(null);
+      else if (e.key === "Escape") { setSelectedId(null); setFeedBig(false); }
       else return;
       e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step, about, setStep, newScenario, fullscreen]);
+  }, [step, about, setStep, newScenario, fullscreen, togglePlay]);
 
   const stepIndex = STEPS.findIndex((s) => s.id === step);
 
@@ -163,7 +267,14 @@ export default function Dashboard() {
         <section className="stage" aria-label="Peta">
           {meta ? (
             <GlassMap meta={meta} scenario={scenario} step={step} sensor={sensor} basemap={basemap} onBasemap={setBasemap}
-              selectedId={selectedId} onSelect={setSelectedId} sweepKey={sweepKey} policy={policy} />
+              selectedId={selectedId} onSelect={setSelectedId} sweepKey={sweepKey} policy={policy}
+              mission={mission} scans={scans} player={player} playerState={pstate} follow={follow}>
+              {step === "pindai" && (
+                <DroneFeed mission={mission} player={player} state={pstate} scans={known} order={order} focusId={selectedId}
+                  params={params} vlmEnabled={meta.drone.vlm.enabled} follow={follow} onFollow={setFollow}
+                  expanded={feedBig} onExpand={setFeedBig} />
+              )}
+            </GlassMap>
           ) : (
             <div className="sheet-frame">
               <div className="boot">
@@ -182,12 +293,22 @@ export default function Dashboard() {
         <aside className="panel" ref={panelRef} aria-label="Penjelasan langkah">
           <div className="panel-inner">
             {error && meta && <div className="note note-bad small">Perhitungan gagal: {error}</div>}
-            {selected && meta && step !== "lihat" && <AssetCard asset={selected} meta={meta} onClose={() => setSelectedId(null)} />}
+            {selected && meta && step !== "lihat" && step !== "pindai" && <AssetCard asset={selected} meta={meta} onClose={() => setSelectedId(null)} />}
             {meta && scenario ? (
               <>
                 {step === "lihat" && (
                   <StepLihat scenario={scenario} sensor={sensor} onSensor={setSensor} cloud={params.cloud_cover}
                     onCloud={(v) => setParams((p) => ({ ...p, cloud_cover: v }))} />
+                )}
+                {step === "pindai" && (
+                  <StepPindai meta={meta} scenario={scenario} baseScenario={baseScenario} mission={mission}
+                    missionError={missionError} state={pstate} scans={scans} order={order}
+                    maxTargets={maxTargets} onMaxTargets={setMaxTargets}
+                    onStart={startMission} onPause={() => player?.pause()} onResume={() => player?.play()}
+                    onSpeed={(s) => player?.setSpeed(s)} onSkip={() => { void player?.skip(); }} onReset={resetMission}
+                    useDrone={useDrone} onUseDrone={setUseDrone} selectedId={selectedId} onSelect={setSelectedId}
+                    video={video} onApplyVideo={(v) => setVideo((xs) => [...xs.filter((x) => x.id !== v.id), v])}
+                    onRemoveVideo={(id) => setVideo((xs) => xs.filter((x) => x.id !== id))} />
                 )}
                 {step === "nilai" && <StepNilai meta={meta} scenario={scenario} policy={policy} selected={selected} />}
                 {step === "hitung" && <StepHitung scenario={scenario} />}
@@ -198,13 +319,13 @@ export default function Dashboard() {
               !error && <div className="muted">Menghitung skenario…</div>
             )}
             <div className="tiny" style={{ marginTop: 8 }}>
-              Data contoh untuk demonstrasi. <button type="button" className="btn-ghost" style={{ border: 0, background: "none", padding: 0, color: "var(--orbit-ink)", cursor: "pointer", textDecoration: "underline" }} onClick={() => setAbout(true)}>Lihat sumber data</button>
+              Data contoh untuk demonstrasi. <button type="button" className="btn-link" onClick={() => setAbout(true)}>Lihat sumber data</button>
             </div>
           </div>
         </aside>
       </main>
 
-      <AboutDialog open={about} onClose={() => setAbout(false)} dataMode={meta?.data_mode ?? "contoh"} />
+      <AboutDialog open={about} onClose={() => setAbout(false)} dataMode={meta?.data_mode ?? "contoh"} vlm={meta?.drone.vlm ?? null} />
     </div>
   );
 }

@@ -5,8 +5,8 @@ import type {
   LayerSpecification,
   StyleSpecification,
 } from "maplibre-gl";
-import type { Basemap, Meta, Scenario, Sensor, StepId } from "@/lib/types";
-import { SENSOR, SERIES } from "@/lib/palette";
+import type { Basemap, Meta, Mission, ScanResult, Scenario, Sensor, StepId } from "@/lib/types";
+import { DAMAGE_CLASS, DRONE_ACCENT, SENSOR, SERIES } from "@/lib/palette";
 
 /* ---------- peta dasar ---------- */
 export const BASEMAPS: Record<Exclude<Basemap, "offline">, { label: string; layer: string }> = {
@@ -76,13 +76,25 @@ const zoneColor: ExpressionSpecification = [
   "#8A97A6",
 ];
 
+const classColor: ExpressionSpecification = [
+  "match", ["get", "cls"],
+  0, DAMAGE_CLASS[0].color, 1, DAMAGE_CLASS[1].color, 2, DAMAGE_CLASS[2].color, 3, DAMAGE_CLASS[3].color,
+  "#8A97A6",
+];
+
+const DRONE_SRC: FilterSpecification = [">", ["get", "src"], 0];
+
 const bySI = (a: number, b: number): ExpressionSpecification =>
   ["interpolate", ["linear"], ["sqrt", ["get", "si"]], 44721, a, 200000, b];
-const radiusSI: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 11, bySI(3.2, 6.5), 13, bySI(4.6, 9.5), 16, bySI(8, 17)];
-
 const byClaim = (a: number, b: number): ExpressionSpecification =>
   ["interpolate", ["linear"], ["sqrt", ["get", "claim"]], 0, a, 173205, b];
-const radiusClaim: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 11, byClaim(1.6, 12), 13, byClaim(2.6, 19), 16, byClaim(4.5, 36)];
+
+/** Jari-jari bergantung zoom; `pad` menambah beberapa piksel (untuk cincin di luar titik).
+ *  Ekspresi zoom harus di tingkat teratas, jadi tambahan dimasukkan ke tiap titik henti. */
+const radiusSI = (pad = 0): ExpressionSpecification => ["interpolate", ["linear"], ["zoom"],
+  11, ["+", bySI(3.2, 6.5), pad], 13, ["+", bySI(4.6, 9.5), pad], 16, ["+", bySI(8, 17), pad]];
+const radiusClaim = (pad = 0): ExpressionSpecification => ["interpolate", ["linear"], ["zoom"],
+  11, ["+", byClaim(1.6, 12), pad], 13, ["+", byClaim(2.6, 19), pad], 16, ["+", byClaim(4.5, 36), pad]];
 
 const heatRadius: ExpressionSpecification = ["interpolate", ["exponential", 2], ["zoom"], 11, 20, 13, 58, 15, 150];
 
@@ -141,12 +153,27 @@ export function overlayLayers(): LayerSpecification[] {
 
     circle("lihat-dots", null, { "circle-color": "#ffffff", "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 1.8, 14, 3.2, 16, 5], "circle-stroke-width": 0 }),
     circle("lihat-hidden", HID, { "circle-color": "rgba(0,0,0,0)", "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 3, 14, 5, 16, 7], "circle-stroke-width": 1.5, "circle-stroke-color": "#ffffff" }),
-    circle("nilai-hid", HID, { "circle-color": zoneColor, "circle-radius": radiusSI, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.2 }),
-    circle("nilai-obs", OBS, { "circle-color": zoneColor, "circle-radius": radiusSI, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.4 }),
-    circle("hitung-hid", HID, { "circle-color": zoneColor, "circle-radius": radiusClaim, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 }),
-    circle("hitung-obs", OBS, { "circle-color": zoneColor, "circle-radius": radiusClaim, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 }),
-    circle("bayar-none", ["==", ["get", "adv"], 0], { "circle-color": SERIES.muted, "circle-radius": radiusSI, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 }),
-    circle("bayar-adv", ["==", ["get", "adv"], 1], { "circle-color": SERIES.advance, "circle-radius": radiusSI, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.6 }),
+    circle("nilai-hid", HID, { "circle-color": zoneColor, "circle-radius": radiusSI(), "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.2 }),
+    circle("nilai-obs", OBS, { "circle-color": zoneColor, "circle-radius": radiusSI(), "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.4 }),
+    circle("hitung-hid", HID, { "circle-color": zoneColor, "circle-radius": radiusClaim(), "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 }),
+    circle("hitung-obs", OBS, { "circle-color": zoneColor, "circle-radius": radiusClaim(), "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 }),
+    circle("bayar-none", ["==", ["get", "adv"], 0], { "circle-color": SERIES.muted, "circle-radius": radiusSI(), "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 }),
+    circle("bayar-adv", ["==", ["get", "adv"], 1], { "circle-color": SERIES.advance, "circle-radius": radiusSI(), "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.6 }),
+
+    // aset yang nilainya dari drone / video: cincin biru muda
+    circle("drone-halo-si", DRONE_SRC, { "circle-color": "rgba(0,0,0,0)", "circle-radius": radiusSI(3), "circle-stroke-color": DRONE_ACCENT, "circle-stroke-width": 1.6 }),
+    circle("drone-halo-claim", DRONE_SRC, { "circle-color": "rgba(0,0,0,0)", "circle-radius": radiusClaim(3), "circle-stroke-color": DRONE_ACCENT, "circle-stroke-width": 1.6 }),
+
+    // misi drone
+    { id: "route-casing", type: "line", source: "route", paint: { "line-color": "#0b1826", "line-width": 5, "line-opacity": 0 }, layout: { "line-join": "round", "line-cap": "round" } },
+    { id: "route-line", type: "line", source: "route", paint: { "line-color": "#d6e8fb", "line-width": 1.8, "line-dasharray": [2, 2], "line-opacity": 0 }, layout: { "line-join": "round" } },
+    { id: "route-done", type: "line", source: "routeDone", paint: { "line-color": DRONE_ACCENT, "line-width": 2.8, "line-opacity": 0 }, layout: { "line-join": "round", "line-cap": "round" } },
+    { id: "targets-pending", type: "circle", source: "targets", filter: ["==", ["get", "status"], 0],
+      paint: { "circle-color": "rgba(11,24,38,0.35)", "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 4, 14, 6.5, 16, 9], "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.6, "circle-opacity": 0, "circle-stroke-opacity": 0 } },
+    { id: "targets-scanned", type: "circle", source: "targets", filter: ["==", ["get", "status"], 2],
+      paint: { "circle-color": classColor, "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 4.5, 14, 7.5, 16, 11], "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.6, "circle-opacity": 0, "circle-stroke-opacity": 0 } },
+    { id: "targets-current", type: "circle", source: "targets", filter: ["==", ["get", "status"], 1],
+      paint: { "circle-color": "rgba(124,196,255,0.22)", "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 9, 14, 13, 16, 18], "circle-stroke-color": DRONE_ACCENT, "circle-stroke-width": 2.2, "circle-opacity": 0, "circle-stroke-opacity": 0 } },
   ];
 }
 
@@ -160,6 +187,10 @@ const OPACITY_PROPS: Record<string, string[]> = {
   "nilai-hid": ["circle-opacity", "circle-stroke-opacity"], "nilai-obs": ["circle-opacity", "circle-stroke-opacity"],
   "hitung-hid": ["circle-opacity", "circle-stroke-opacity"], "hitung-obs": ["circle-opacity", "circle-stroke-opacity"],
   "bayar-none": ["circle-opacity", "circle-stroke-opacity"], "bayar-adv": ["circle-opacity", "circle-stroke-opacity"],
+  "drone-halo-si": ["circle-stroke-opacity"], "drone-halo-claim": ["circle-stroke-opacity"],
+  "route-casing": ["line-opacity"], "route-line": ["line-opacity"], "route-done": ["line-opacity"],
+  "targets-pending": ["circle-opacity", "circle-stroke-opacity"], "targets-scanned": ["circle-opacity", "circle-stroke-opacity"],
+  "targets-current": ["circle-opacity", "circle-stroke-opacity"],
 };
 
 export function lensTargets(step: StepId, sensor: Sensor): Record<string, Target> {
@@ -172,12 +203,21 @@ export function lensTargets(step: StepId, sensor: Sensor): Record<string, Target
         "lihat-dots": [0.85, 0],
         ...(sensor === "d_surf" ? { "lihat-hidden": [0, 0.95] as Target } : {}),
       };
+    case "pindai":
+      return {
+        clouds: 0.2, "lihat-dots": [0.4, 0], "lihat-hidden": [0, 0.85],
+        "route-casing": 0.45, "route-line": 0.85, "route-done": 1,
+        "targets-pending": [1, 1], "targets-scanned": [1, 1], "targets-current": [1, 1],
+      };
     case "nilai":
-      return { clouds: 0.1, "liq-line": 0.35, "nilai-hid": [0.42, 0.85], "nilai-obs": [0.96, 1] };
+      return { clouds: 0.1, "liq-line": 0.35, "nilai-hid": [0.42, 0.85], "nilai-obs": [0.96, 1], "drone-halo-si": 0.95 };
     case "hitung":
-      return { clouds: 0.08, links: 0.8, "hitung-hid": [0.45, 0.85], "hitung-obs": [0.86, 1] };
+      return { clouds: 0.08, links: 0.8, "hitung-hid": [0.45, 0.85], "hitung-obs": [0.86, 1], "drone-halo-claim": 0.95 };
     case "bayar":
-      return { "shake-heat": 0.85, "shake-casing": 0.5, "shake-line": 1, "fault-casing": 0.3, "fault-line": 0.55, "bayar-none": [0.82, 0.9], "bayar-adv": [0.97, 1] };
+      return {
+        "shake-heat": 0.85, "shake-casing": 0.5, "shake-line": 1, "fault-casing": 0.3, "fault-line": 0.55,
+        "bayar-none": [0.82, 0.9], "bayar-adv": [0.97, 1], "drone-halo-si": 0.8,
+      };
   }
 }
 
@@ -194,6 +234,7 @@ export function applyLens(map: MLMap, step: StepId, sensor: Sensor) {
 /** Lapisan yang bisa di-hover/klik di tiap langkah. */
 export const HIT_LAYERS: Record<StepId, string[]> = {
   lihat: ["lihat-dots", "lihat-hidden"],
+  pindai: ["targets-current", "targets-scanned", "targets-pending", "lihat-dots", "lihat-hidden"],
   nilai: ["nilai-obs", "nilai-hid"],
   hitung: ["hitung-obs", "hitung-hid"],
   bayar: ["bayar-adv", "bayar-none"],
@@ -231,6 +272,7 @@ export function assetsFC(s: Scenario): FC {
       properties: {
         id: a.id, type: a.type, zone: a.zone, obs: a.observed ? 1 : 0, si: a.sum_insured, claim: a.claim,
         adv: a.advance > 0 ? 1 : 0, sdsi: a.sdsi, d_surf: a.d_surf, d_vol: a.d_vol, d_water: a.d_water, lon: a.lon,
+        src: a.source === "drone" ? 1 : a.source === "video" ? 2 : 0,
       },
     })),
   };
@@ -286,6 +328,35 @@ export function shakeGridFC(meta: Meta): FC {
   return {
     type: "FeatureCollection",
     features: meta.shake_grid.map(([lon, lat, mmi]) => ({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: { mmi } })),
+  };
+}
+
+/* ---------- misi drone ---------- */
+export function routeFC(m: Mission | null): FC {
+  if (!m || m.route.length < 2) return EMPTY;
+  return { type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "LineString", coordinates: m.route }, properties: {} }] };
+}
+
+/** Bagian rute yang sudah diterbangi: posko sampai target ke-`upto` (0 = belum ada). */
+export function routeDoneFC(m: Mission | null, upto: number, home = false): FC {
+  if (!m || upto <= 0) return EMPTY;
+  const coords = m.route.slice(0, Math.min(upto, m.targets.length) + 1);
+  if (home) coords.push(m.route[m.route.length - 1]);
+  return { type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: {} }] };
+}
+
+export function targetsFC(m: Mission | null, scans: Record<string, ScanResult>, currentId: string | null): FC {
+  if (!m) return EMPTY;
+  return {
+    type: "FeatureCollection",
+    features: m.targets.map((t) => {
+      const r = scans[t.id];
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [t.lon, t.lat] },
+        properties: { id: t.id, order: t.order, reason: t.reason, status: t.id === currentId ? 1 : r ? 2 : 0, cls: r?.estimate.cls ?? -1 },
+      };
+    }),
   };
 }
 
