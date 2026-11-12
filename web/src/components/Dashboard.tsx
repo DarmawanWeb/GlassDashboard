@@ -132,8 +132,11 @@ export default function Dashboard() {
       <header className="topbar">
         {loading && <div className="loading-line" aria-hidden="true" />}
         <div className="brand">
-          <h1 className="wordmark">GLASS</h1>
-          <span className="tagline">Menilai kerusakan bencana dari luar angkasa</span>
+          <h1 className="wordmark">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/glass-logo.png" alt="GLASS" width={123} height={52} />
+          </h1>
+          <span className="tagline">Menilai kerusakan bencana dari satelit dan drone</span>
         </div>
         <nav className="steps-nav" aria-label="Langkah GLASS">
           <ol className="steps">

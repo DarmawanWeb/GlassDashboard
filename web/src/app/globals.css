@@ -56,11 +56,9 @@ a { color: var(--orbit-ink); text-underline-offset: 2px; }
   padding: 0 20px; background: var(--sheet); border-bottom: 1px solid var(--rule);
   position: relative; z-index: 5;
 }
-.brand { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
-.wordmark {
-  font-size: 27px; font-weight: 860; font-stretch: 125%; letter-spacing: 0.03em; line-height: 1;
-  color: var(--ink); margin: 0;
-}
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.wordmark { margin: 0; line-height: 0; }
+.wordmark img { display: block; height: 52px; width: auto; }
 .tagline { font-size: 14px; color: var(--ink-2); font-stretch: 88%; white-space: nowrap; }
 .topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
