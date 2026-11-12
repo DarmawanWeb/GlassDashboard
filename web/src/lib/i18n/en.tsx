@@ -311,7 +311,7 @@ export const en: Dict = {
       vol: (p: string) => `LiDAR: the surface dropped by ${p} of the building height on average (collapse or sagging).`,
       wet: (p: string) => `Thermal: ${p} of the ground around the building is colder than 29.8 °C and not vegetation (mud or standing water).`,
       area: (n: number, severe: number) => `${n} other buildings were detected nearby, ${severe} with major damage or destroyed.`,
-      confidence: (p: string) => `AI confidence ${p}; it drops when the percentage sits close to a class boundary.`,
+      confidence: (p: string) => `AI confidence ${p}: higher when the camera and LiDAR agree.`,
     },
   },
 
